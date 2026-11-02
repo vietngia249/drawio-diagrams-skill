@@ -1,0 +1,126 @@
+{
+    "sequence":  {
+                     "fontFamily":  "Arial",
+                     "fontSize":  16,
+                     "participant":  {
+                                         "shape":  "umlLifeline",
+                                         "fillColor":  "none",
+                                         "strokeColor":  "#999999",
+                                         "strokeWidth":  1,
+                                         "rounded":  0
+                                     },
+                     "activation":  {
+                                        "shape":  "rect",
+                                        "fillColor":  "#ffffff",
+                                        "strokeColor":  "#000000",
+                                        "strokeWidth":  1
+                                    },
+                     "frame":  {
+                                   "shape":  "umlFrame",
+                                   "fillColor":  "#eeeeee",
+                                   "strokeColor":  "#999999",
+                                   "strokeWidth":  1,
+                                   "rounded":  0
+                               },
+                     "message":  {
+                                     "shape":  "edge",
+                                     "strokeColor":  "#000000",
+                                     "strokeWidth":  1,
+                                     "fontSize":  16,
+                                     "syncArrow":  "block",
+                                     "returnDashed":  true
+                                 },
+                     "fragment":  {
+                                      "shape":  "umlFrame",
+                                      "fillColor":  "#eeeeee",
+                                      "strokeColor":  "#999999",
+                                      "strokeWidth":  1,
+                                      "fontSize":  16,
+                                      "guardFontSize":  14,
+                                      "separatorStyle":  "dashed=1;strokeColor=#999999;strokeWidth=1"
+                                  }
+                 },
+    "erd":  {
+                "fontFamily":  "Arial,Helvetica,sans-serif",
+                "fontSize":  14,
+                "entity":  {
+                               "shape":  "table",
+                               "fillColor":  "none",
+                               "strokeColor":  "#000000",
+                               "strokeWidth":  1,
+                               "rounded":  0
+                           },
+                "attribute":  {
+                                  "shape":  "tableRow",
+                                  "fontSize":  14
+                              },
+                "primaryKey":  {
+                                   "marker":  "PK"
+                               },
+                "foreignKey":  {
+                                   "marker":  "FK"
+                               },
+                "relation":  {
+                                 "notation":  "crowsfoot",
+                                 "strokeColor":  "#000000",
+                                 "strokeWidth":  1
+                             }
+            },
+    "dfd":  {
+                "fontFamily":  "Arial,Helvetica,sans-serif",
+                "fontSize":  9.5,
+                "process":  {
+                                "shape":  "ellipse",
+                                "fillColor":  "#ffffff",
+                                "strokeColor":  "#000000",
+                                "strokeWidth":  1,
+                                "rounded":  0
+                            },
+                "dataStore":  {
+                                  "shape":  "partialRectangle",
+                                  "fillColor":  "#ffffff",
+                                  "strokeColor":  "#000000",
+                                  "strokeWidth":  1
+                              },
+                "externalEntity":  {
+                                       "shape":  "default",
+                                       "fillColor":  "#ffffff",
+                                       "strokeColor":  "#000000",
+                                       "strokeWidth":  1
+                                   },
+                "dataFlow":  {
+                                 "shape":  "edge",
+                                 "strokeColor":  "#000000",
+                                 "strokeWidth":  1,
+                                 "arrow":  "block"
+                             }
+            },
+    "usecase":  {
+                    "fontFamily":  "Arial",
+                    "fontSize":  14,
+                    "actor":  {
+                                  "shape":  "umlActor",
+                                  "fillColor":  "#ffffff",
+                                  "strokeColor":  "#000000",
+                                  "strokeWidth":  1
+                              },
+                    "useCase":  {
+                                    "shape":  "ellipse",
+                                    "fillColor":  "#ffffff",
+                                    "strokeColor":  "#000000",
+                                    "strokeWidth":  1,
+                                    "rounded":  0
+                                },
+                    "boundary":  {
+                                     "shape":  "umlFrame",
+                                     "fillColor":  "none",
+                                     "strokeColor":  "#000000",
+                                     "strokeWidth":  1
+                                 },
+                    "relationship":  {
+                                         "shape":  "edge",
+                                         "strokeColor":  "#000000",
+                                         "strokeWidth":  1
+                                     }
+                }
+}

@@ -1,0 +1,1 @@
+{"type":"erd","title":"Synthetic catalog","entities":[{"name":"Product","attributes":[{"name":"id","type":"integer","key":"PK"},{"name":"name","type":"text"}]},{"name":"OrderItem","attributes":[{"name":"id","type":"integer","key":"PK"},{"name":"product_id","type":"integer","key":"FK"}]}],"relations":[{"from":"OrderItem","to":"Product","name":"references"}]}

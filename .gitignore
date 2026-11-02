@@ -1,0 +1,12 @@
+Diagram/
+analysis/
+examples/*/source/
+examples/blind*/
+Docs/context/
+docs/context/
+node_modules/
+out/
+tmp/
+.env
+.env.*
+*.log
