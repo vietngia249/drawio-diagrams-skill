@@ -1,0 +1,23 @@
+{
+  "type": "usecase",
+  "title": "Synthetic UTF-8 use case: Dịch vụ & hỗ trợ <demo>",
+  "systemName": "Cổng dịch vụ công & hồ sơ <điện tử>",
+  "actors": [
+    { "id": "cong_dan", "label": "Công dân & đại diện tổ chức" },
+    { "id": "can_bo", "label": "Cán bộ tiếp nhận <hồ sơ>" }
+  ],
+  "useCases": [
+    { "id": "nop", "label": "Nộp hồ sơ\n& đăng ký <dịch vụ>" },
+    { "id": "theo_doi", "label": "Theo dõi trạng thái\n(đơn hàng & hồ sơ)" },
+    { "id": "xac_minh", "label": "Xác minh thông tin\n& tài liệu <đính kèm>" },
+    { "id": "thong_bao", "label": "Gửi thông báo\n«đã xử lý» & kết quả" }
+  ],
+  "relationships": [
+    { "from": "cong_dan", "to": "nop", "type": "association" },
+    { "from": "cong_dan", "to": "theo_doi", "type": "association" },
+    { "from": "cong_dan", "to": "xac_minh", "type": "association" },
+    { "from": "can_bo", "to": "theo_doi", "type": "association" },
+    { "from": "can_bo", "to": "xac_minh", "type": "association" },
+    { "from": "can_bo", "to": "thong_bao", "type": "association" }
+  ]
+}

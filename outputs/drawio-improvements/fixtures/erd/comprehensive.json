@@ -1,0 +1,165 @@
+{
+    "type":  "erd",
+    "title":  "ERD regression — khách hàng \u0026 orders \u003cđặc biệt\u003e",
+    "entities":  [
+                     {
+                         "name":  "CustomerRegistryWithAnIntentionallyLongEntityName",
+                         "attributes":  [
+                                            {
+                                                "name":  "customer_identifier",
+                                                "type":  "BIGINT UNSIGNED",
+                                                "key":  "primary key"
+                                            },
+                                            {
+                                                "name":  "display_name",
+                                                "type":  "NVARCHAR(240)",
+                                                "key":  ""
+                                            },
+                                            {
+                                                "name":  "email_address",
+                                                "type":  "VARCHAR(320)",
+                                                "key":  ""
+                                            },
+                                            {
+                                                "name":  "created_at",
+                                                "type":  "TIMESTAMP WITH TIME ZONE",
+                                                "key":  ""
+                                            },
+                                            {
+                                                "name":  "ghi_chú_đa_dòng\n(dòng thứ hai \u0026 \u003cxml\u003e)",
+                                                "type":  "NVARCHAR(500)\ncomment: khách hàng",
+                                                "key":  ""
+                                            }
+                                        ]
+                     },
+                     {
+                         "name":  "Order",
+                         "attributes":  [
+                                            {
+                                                "name":  "order_id",
+                                                "type":  "BIGINT",
+                                                "key":  "PK"
+                                            },
+                                            {
+                                                "name":  "customer_id",
+                                                "type":  "BIGINT",
+                                                "key":  "foreign key"
+                                            },
+                                            {
+                                                "name":  "billing_customer_id",
+                                                "type":  "BIGINT",
+                                                "key":  "FK"
+                                            },
+                                            {
+                                                "name":  "shipping_customer_id",
+                                                "type":  "BIGINT",
+                                                "key":  "FK"
+                                            },
+                                            "created_at",
+                                            {
+                                                "n":  "trạng_thái",
+                                                "t":  "NVARCHAR(80)"
+                                            }
+                                        ]
+                     },
+                     {
+                         "name":  "Category",
+                         "attributes":  [
+                                            {
+                                                "name":  "category_id",
+                                                "type":  "INTEGER",
+                                                "key":  "PK"
+                                            },
+                                            {
+                                                "name":  "parent_category_id",
+                                                "type":  "INTEGER",
+                                                "key":  "FK"
+                                            },
+                                            {
+                                                "name":  "label",
+                                                "type":  "TEXT"
+                                            }
+                                        ]
+                     },
+                     {
+                         "name":  "OrderLine",
+                         "attrs":  [
+                                       {
+                                           "n":  "order_id",
+                                           "t":  "BIGINT",
+                                           "k":  "PK, FK"
+                                       },
+                                       {
+                                           "n":  "line_number",
+                                           "t":  "INTEGER",
+                                           "k":  "PK"
+                                       },
+                                       {
+                                           "n":  "description",
+                                           "t":  "TEXT"
+                                       },
+                                       {
+                                           "n":  "quantity",
+                                           "t":  "DECIMAL(12, 3)"
+                                       },
+                                       {
+                                           "n":  "unit_price",
+                                           "t":  "DECIMAL(12, 2)"
+                                       },
+                                       {
+                                           "n":  "tax_amount",
+                                           "t":  "DECIMAL(12, 2)"
+                                       }
+                                   ]
+                     }
+                 ],
+    "relations":  [
+                      {
+                          "from":  "Order",
+                          "to":  "CustomerRegistryWithAnIntentionallyLongEntityName",
+                          "name":  "placed by",
+                          "fromCardinality":  "1",
+                          "toCardinality":  "0..*",
+                          "fromAttribute":  "customer_id",
+                          "toAttribute":  "customer_identifier"
+                      },
+                      {
+                          "from":  "Order",
+                          "to":  "CustomerRegistryWithAnIntentionallyLongEntityName",
+                          "name":  "billed to",
+                          "fromCardinality":  "0..1",
+                          "toCardinality":  "0..*",
+                          "fromAttribute":  "billing_customer_id",
+                          "toAttribute":  "customer_identifier"
+                      },
+                      {
+                          "from":  "Order",
+                          "to":  "CustomerRegistryWithAnIntentionallyLongEntityName",
+                          "name":  "shipped to",
+                          "fromCardinality":  "1..*",
+                          "toCardinality":  "0..*",
+                          "fromAttribute":  "shipping_customer_id",
+                          "toAttribute":  "customer_identifier"
+                      },
+                      {
+                          "from":  "Category",
+                          "to":  "Category",
+                          "name":  "",
+                          "fromCardinality":  "0..1",
+                          "toCardinality":  "0..*",
+                          "fromAttribute":  "parent_category_id",
+                          "toAttribute":  "category_id"
+                      },
+                      {
+                          "a":  "Order",
+                          "b":  "CustomerRegistryWithAnIntentionallyLongEntityName",
+                          "name":  "",
+                          "fromAttribute":  "customer_id",
+                          "toAttribute":  "customer_identifier"
+                      }
+                  ],
+    "page":  {
+                 "width":  1200,
+                 "height":  900
+             }
+}

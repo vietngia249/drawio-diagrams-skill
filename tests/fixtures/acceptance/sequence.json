@@ -1,0 +1,49 @@
+{
+  "type": "sequence",
+  "title": "Synthetic UTF-8 sequence: Đặt hàng & xác nhận <demo>",
+  "page": { "width": 1700, "height": 1200 },
+  "participants": [
+    { "id": "khach", "label": "Khách hàng <VIP>" },
+    { "id": "dich_vu", "label": "Dịch vụ đặt hàng\n(xử lý <XML> & dữ liệu)" },
+    { "id": "kho", "label": "Kho hàng & tồn kho <API>" }
+  ],
+  "messages": [
+    { "order": 1, "from": "khach", "to": "dich_vu", "label": "Tạo đơn hàng & xác nhận <thông tin>", "kind": "sync" },
+    { "order": 4, "from": "dich_vu", "to": "khach", "label": "Đã nhận: mã <123> & phí", "kind": "return" }
+  ],
+  "fragments": [
+    {
+      "kind": "alt",
+      "order": 2,
+      "branches": [
+        {
+          "guard": "[Tất cả mặt hàng <mã đơn> còn hàng & đủ điều kiện để giữ chỗ]",
+          "messages": [
+            { "order": 1, "from": "dich_vu", "to": "kho", "label": "Giữ chỗ các mặt hàng trong đơn <mới> & cập nhật tồn kho", "kind": "sync" },
+            { "order": 2, "from": "kho", "to": "dich_vu", "label": "Đã giữ chỗ & xác nhận số lượng", "kind": "return" }
+          ],
+          "fragments": [
+            {
+              "kind": "opt",
+              "order": 3,
+              "branches": [
+                {
+                  "guard": "[Gửi thông báo xác nhận <đơn hàng> nếu khách hàng & dịch vụ hoàn tất thanh toán trước thời hạn xử lý đã công bố]",
+                  "messages": [
+                    { "from": "dich_vu", "to": "dich_vu", "label": "Kiểm tra trạng thái nội bộ & giới hạn thanh toán <đơn hàng>", "kind": "sync" }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "guard": "[Có mặt hàng hết tồn kho hoặc dữ liệu <không hợp lệ> & cần xử lý thủ công]",
+          "messages": [
+            { "from": "dich_vu", "to": "khach", "label": "Từ chối đơn hàng & nêu mặt hàng <thiếu>", "kind": "return" }
+          ]
+        }
+      ]
+    }
+  ]
+}

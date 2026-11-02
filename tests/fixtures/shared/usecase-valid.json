@@ -1,0 +1,14 @@
+{
+  "type": "usecase",
+  "title": "Support portal",
+  "systemName": "Support portal",
+  "actors": [{ "id": "customer", "label": "Customer" }],
+  "useCases": [
+    { "id": "submit", "label": "Submit request" },
+    { "id": "track", "label": "Track request" }
+  ],
+  "relationships": [
+    { "id": "customer-submit", "type": "association", "from": "customer", "to": "submit" },
+    { "id": "track-submit", "type": "include", "from": "track", "to": "submit" }
+  ]
+}

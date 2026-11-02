@@ -1,0 +1,17 @@
+{
+  "type": "activity",
+  "title": "Request review",
+  "nodes": [
+    { "id": "start", "kind": "initial" },
+    { "id": "review", "kind": "action", "label": "Review request" },
+    { "id": "decision", "kind": "decision" },
+    { "id": "approve", "kind": "action", "label": "Approve request" },
+    { "id": "end", "kind": "activityFinal" }
+  ],
+  "transitions": [
+    { "from": "start", "to": "review" },
+    { "from": "review", "to": "decision" },
+    { "from": "decision", "to": "approve", "guard": "[complete]" },
+    { "from": "approve", "to": "end" }
+  ]
+}

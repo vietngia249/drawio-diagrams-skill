@@ -1,0 +1,27 @@
+{
+  "type": "activity",
+  "title": "Xử lý hồ sơ đăng ký & kết quả",
+  "page": { "width": 1120, "height": 760 },
+  "nodes": [
+    { "id": "start", "kind": "initial", "x": 500, "y": 35 },
+    { "id": "receive", "kind": "action", "label": "Tiếp nhận\nhồ sơ & tài liệu", "x": 440, "y": 110 },
+    { "id": "decision", "kind": "decision", "x": 480, "y": 220 },
+    { "id": "review", "kind": "action", "label": "Yêu cầu bổ sung\n«thiếu giấy tờ»", "x": 145, "y": 340 },
+    { "id": "approve", "kind": "action", "label": "Phê duyệt &\nphát hành kết quả", "x": 715, "y": 340 },
+    { "id": "merge", "kind": "merge", "x": 480, "y": 485 },
+    { "id": "notify", "kind": "action", "label": "Gửi thông báo\nđến người nộp", "x": 440, "y": 575 },
+    { "id": "done", "kind": "final", "x": 500, "y": 680 },
+    { "id": "rejected", "kind": "flowFinal", "x": 15, "y": 540 }
+  ],
+  "transitions": [
+    { "from": "start", "to": "receive" },
+    { "from": "receive", "to": "decision" },
+    { "from": "decision", "to": "review", "guard": "[thiếu thông tin]" },
+    { "from": "decision", "to": "approve", "guard": "[hồ sơ hợp lệ]" },
+    { "from": "review", "to": "rejected", "label": "[hết thời hạn bổ sung]" },
+    { "from": "review", "to": "merge", "label": "[đã bổ sung]" },
+    { "from": "approve", "to": "merge" },
+    { "from": "merge", "to": "notify" },
+    { "from": "notify", "to": "done" }
+  ]
+}

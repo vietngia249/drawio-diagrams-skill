@@ -1,9 +1,24 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import zlib from 'node:zlib';
-const [src,out,type]=process.argv.slice(2);let raw=fs.readFileSync(src,'utf8');
-if(!raw.includes('<mxGraphModel')){const m=raw.match(/<diagram[^>]*>([\s\S]*?)<\/diagram>/);const b=Buffer.from(m[1].replace(/\s/g,''),'base64');for(const f of [zlib.inflateRawSync,zlib.inflateSync])try{raw=f(b).toString('utf8');break}catch{}}
-const decode=s=>s.replaceAll('&quot;','"').replaceAll('&apos;',"'").replaceAll('&lt;','<').replaceAll('&gt;','>').replaceAll('&amp;','&');const elements=[];
-for(const m of raw.matchAll(/<mxCell\b([^>]*?)(?:\/>|>([\s\S]*?)<\/mxCell>)/g)){const attrs={};for(const a of m[1].matchAll(/([\w:.-]+)="([^"]*)"/g))attrs[a[1]]=decode(a[2]);const body=m[2]||'',g=body.match(/<mxGeometry\b([^>]*)/);const geometry={};if(g)for(const a of g[1].matchAll(/([\w:.-]+)="([^"]*)"/g))geometry[a[1]]=Number(a[2])||0;geometry.points=[...body.matchAll(/<mxPoint\b([^>]*)/g)].map(q=>Object.fromEntries([...q[1].matchAll(/([\w:.-]+)="([^"]*)"/g)].map(a=>[a[1],Number(a[2])||0])));if(attrs.id==='0'||attrs.id==='1')continue;elements.push({attrs,vertex:attrs.vertex==='1',edge:attrs.edge==='1',geometry})}
-const edges=elements.filter(e=>e.edge),frames=elements.filter(e=>e.vertex&&e.attrs.style?.includes('shape=umlFrame')&&/^(alt|opt|loop|par)$/i.test(e.attrs.value||''));const fragments=frames.map(f=>{const g=f.geometry,messages=edges.filter(e=>e.geometry.points.some(p=>p.x>=g.x&&p.x<=g.x+g.width&&p.y>=g.y&&p.y<=g.y+g.height));return{id:f.attrs.id,kind:f.attrs.value.toLowerCase(),bounds:{x:g.x,y:g.y,width:g.width,height:g.height},messageIds:messages.map(e=>e.attrs.id),messageCount:messages.length,guards:elements.filter(e=>e.vertex&&/\[[^\]]+\]/.test(e.attrs.value||'')&&e.geometry.x>=g.x&&e.geometry.x<=g.x+g.width&&e.geometry.y>=g.y&&e.geometry.y<=g.y+g.height).map(e=>e.attrs.value)}});
-fs.mkdirSync(path.dirname(out),{recursive:true});fs.writeFileSync(out,JSON.stringify({type,title:path.basename(src),elements,fragments},null,2),'utf8');console.log(`${src}: ${elements.filter(e=>e.vertex).length} shapes, ${edges.length} edges, fragments ${fragments.length} (${fragments.map(f=>f.kind+':'+f.messageCount).join(', ')})`);
+import { assertOutsideReferenceTree, assertSafeOutput, ensureOptions, parseCli, reportError } from './common.mjs';
+import { cellsFromModel, readDrawio } from './drawio_xml.mjs';
+
+const usage = 'Usage: node scripts/import_sample.mjs input.drawio output.json [sequence|erd|dfd|generic] [--page index|name|id]';
+try {
+  const { positional, options, help } = parseCli(process.argv.slice(2), usage); if (help) { console.log(usage); process.exit(0); }
+  ensureOptions(options, ['page', 'type']);
+  const [source, output, legacyType] = positional; if (!source || !output || positional.length > 3) throw new Error(usage); assertSafeOutput(source, output); assertOutsideReferenceTree(output);
+  const { page, pageCount, graph } = readDrawio(source, options.page), cells = cellsFromModel(graph).filter(c => !['0', '1'].includes(c.attrs.id));
+  const type = options.type ?? legacyType ?? 'generic'; if (!['sequence', 'erd', 'dfd', 'generic'].includes(type)) throw new Error(`Unsupported import type ${type}`);
+  const elements = cells.map(cell => {
+    const attrs = { ...cell.attrs }, geometry = {};
+    for (const k of ['x', 'y', 'width', 'height']) if (cell.geometry[k] !== undefined) geometry[k] = Number(cell.geometry[k]);
+    if (cell.geometry.relative !== undefined) geometry.relative = Number(cell.geometry.relative);
+    if (cell.geometry.points.length) geometry.points = cell.geometry.points.map(p => Object.fromEntries(Object.entries(p).map(([k, v]) => [k, ['x', 'y'].includes(k) ? Number(v) : v])));
+    return { attrs, vertex: cell.vertex, edge: cell.edge, geometry };
+  });
+  const losses = ['Original page order and workbook-level metadata are not exported.', 'Unknown XML elements, cell children, and unsupported mxGeometry fields are omitted.', 'Semantic source fields cannot be reconstructed reliably from generic draw.io cells.'];
+  const result = { type, title: path.basename(source), elements, _import: { source: path.basename(source), page: { id: page.id, name: page.name }, pageCount, losses } };
+  fs.mkdirSync(path.dirname(path.resolve(output)), { recursive: true }); fs.writeFileSync(output, JSON.stringify(result, null, 2), 'utf8');
+  console.log(JSON.stringify({ ok: true, output, page: result._import.page, pageCount, importedCells: elements.length, losses }, null, 2));
+} catch (error) { reportError(error); process.exitCode = 2; }
