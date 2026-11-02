@@ -1,0 +1,17 @@
+{
+  "type": "dfd",
+  "title": "DFD reverse and parallel flow labels",
+  "page": { "width": 1600, "height": 800 },
+  "nodes": [
+    { "id": "reader", "kind": "externalEntity", "label": "Người đọc <đối tác>" },
+    { "id": "search", "kind": "process", "label": "1. Xử lý truy vấn\nTìm kiếm & xác thực" },
+    { "id": "catalog", "kind": "dataStore", "label": "D1 Danh mục sản phẩm" }
+  ],
+  "flows": [
+    { "id": "query-main", "from": "reader", "to": "search", "label": "Từ khóa & bộ lọc <tên>, trạng thái \"đang mở\"\nNgôn ngữ: tiếng Việt" },
+    { "id": "query-context", "from": "reader", "to": "search", "label": "Thông tin phiên & tùy chọn hiển thị\n(ký tự đặc biệt: <, >, &, \"quote\")" },
+    { "id": "results", "from": "search", "to": "reader", "label": "Kết quả phù hợp <đầy đủ> & thông báo\nSắp xếp theo mức liên quan" },
+    { "id": "catalog-query", "from": "search", "to": "catalog", "label": "Điều kiện tra cứu\nMã sản phẩm & danh mục" },
+    { "id": "catalog-records", "from": "catalog", "to": "search", "label": "Bản ghi sản phẩm <công khai>\nTên, giá & trạng thái" }
+  ]
+}

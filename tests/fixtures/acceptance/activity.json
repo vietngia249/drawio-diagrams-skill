@@ -1,0 +1,22 @@
+{
+  "type": "activity",
+  "title": "Synthetic UTF-8 activity: Xử lý yêu cầu & kết quả <demo>",
+  "nodes": [
+    { "id": "start", "kind": "initial", "x": 70, "y": 120 },
+    { "id": "receive", "kind": "action", "label": "Nhận yêu cầu\n& kiểm tra\n<dữ liệu>", "x": 190, "y": 105 },
+    { "id": "decision", "kind": "decision", "x": 480, "y": 98 },
+    { "id": "accept", "kind": "action", "label": "Lưu hồ sơ & gửi xác nhận", "x": 620, "y": 45 },
+    { "id": "reject", "kind": "action", "label": "Báo lỗi\n<không hợp lệ>\n& hướng dẫn", "x": 620, "y": 175 },
+    { "id": "merge", "kind": "merge", "x": 930, "y": 98 },
+    { "id": "finish", "kind": "final", "x": 1080, "y": 117 }
+  ],
+  "transitions": [
+    { "from": "start", "to": "receive", "label": "bắt đầu" },
+    { "from": "receive", "to": "decision", "label": "đã kiểm tra" },
+    { "from": "decision", "to": "accept", "guard": "[hợp lệ & đủ thông tin]" },
+    { "from": "decision", "to": "reject", "guard": "[thiếu <dữ liệu>]" },
+    { "from": "accept", "to": "merge" },
+    { "from": "reject", "to": "merge" },
+    { "from": "merge", "to": "finish", "label": "hoàn tất xử lý" }
+  ]
+}

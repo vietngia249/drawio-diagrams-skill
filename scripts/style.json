@@ -63,7 +63,8 @@
                 "relation":  {
                                  "notation":  "crowsfoot",
                                  "strokeColor":  "#000000",
-                                 "strokeWidth":  1
+                                 "strokeWidth":  1,
+                                 "fontSize":  14
                              }
             },
     "dfd":  {
@@ -122,5 +123,21 @@
                                          "strokeColor":  "#000000",
                                          "strokeWidth":  1
                                      }
-                }
+                },
+    "activity":  {
+                     "action":  {
+                                   "fillColor":  "#ffffff",
+                                   "strokeColor":  "#000000",
+                                   "strokeWidth":  1
+                               },
+                     "node":  {
+                                 "fillColor":  "#ffffff",
+                                 "strokeColor":  "#000000",
+                                 "strokeWidth":  1
+                             },
+                     "edge":  {
+                                 "strokeColor":  "#000000",
+                                 "strokeWidth":  1
+                             }
+                 }
 }

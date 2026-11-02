@@ -1,1 +1,33 @@
-{"type":"sequence","title":"Submit an order","participants":[{"id":"customer","label":"Customer"},{"id":"service","label":"Order service"}],"messages":[{"order":1,"from":"customer","to":"service","label":"Submit order","kind":"sync"}],"fragments":[{"kind":"alt","order":2,"branches":[{"guard":"items available","messages":[{"order":1,"from":"service","to":"customer","label":"Order accepted","kind":"return"}]},{"guard":"items unavailable","messages":[{"order":1,"from":"service","to":"customer","label":"Order rejected","kind":"return"}]}]}]}
+{
+  "type": "sequence",
+  "title": "Order submission with optional payment",
+  "page": {"width": 1400, "height": 900},
+  "participants": [
+    {"id": "client", "label": "Customer application"},
+    {"id": "api", "label": "Order processing API"},
+    {"id": "inventory", "label": "Inventory service"}
+  ],
+  "messages": [
+    {"order": 1, "from": "client", "to": "api", "label": "Submit order", "kind": "sync"},
+    {"order": 4, "from": "api", "to": "client", "label": "Return order confirmation", "kind": "return"}
+  ],
+  "fragments": [
+    {
+      "kind": "alt",
+      "order": 2,
+      "branches": [
+        {
+          "guard": "[all requested items are available]",
+          "messages": [
+            {"order": 1, "from": "api", "to": "inventory", "label": "Reserve every requested item for this order", "kind": "sync"},
+            {"order": 2, "from": "inventory", "to": "api", "label": "Reservation accepted", "kind": "return"}
+          ],
+          "fragments": [
+            {"kind": "opt", "order": 3, "branches": [{"guard": "[payment authorization is required]", "messages": [{"from": "api", "to": "api", "label": "Create payment authorization request", "kind": "async"}]}]}
+          ]
+        },
+        {"guard": "[one or more items are unavailable]", "messages": [{"from": "api", "to": "client", "label": "Return unavailable item details", "kind": "return"}]}
+      ]
+    }
+  ]
+}

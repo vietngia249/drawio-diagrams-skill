@@ -1,0 +1,92 @@
+{
+  "type": "usecase",
+  "title": "Đăng ký dịch vụ & hỗ trợ khách hàng",
+  "systemName": "Cổng dịch vụ công trực tuyến",
+  "page": {
+    "width": 1600,
+    "height": 900
+  },
+  "actors": [
+    {
+      "id": "citizen",
+      "label": "Người dân / đại diện tổ chức"
+    },
+    {
+      "id": "officer",
+      "label": "Cán bộ tiếp nhận hồ sơ"
+    }
+  ],
+  "useCases": [
+    {
+      "id": "submit",
+      "label": "Nộp hồ sơ\nđăng ký dịch vụ"
+    },
+    {
+      "id": "pay",
+      "label": "Thanh toán lệ phí"
+    },
+    {
+      "id": "track",
+      "label": "Theo dõi trạng thái\nhồ sơ"
+    },
+    {
+      "id": "appeal",
+      "label": "Yêu cầu bổ sung\nhoặc khiếu nại"
+    },
+    {
+      "id": "verify",
+      "label": "Kiểm tra thông tin\n& tài liệu đính kèm"
+    },
+    {
+      "id": "notify",
+      "label": "Nhận thông báo\n«đã xử lý»"
+    }
+  ],
+  "relationships": [
+    {
+      "from": "citizen",
+      "to": "submit",
+      "type": "association"
+    },
+    {
+      "from": "citizen",
+      "to": "pay",
+      "type": "association"
+    },
+    {
+      "from": "citizen",
+      "to": "track",
+      "type": "association"
+    },
+    {
+      "from": "citizen",
+      "to": "appeal",
+      "type": "association"
+    },
+    {
+      "from": "officer",
+      "to": "verify",
+      "type": "association"
+    },
+    {
+      "from": "officer",
+      "to": "notify",
+      "type": "association"
+    },
+    {
+      "from": "submit",
+      "to": "verify",
+      "type": "include"
+    },
+    {
+      "from": "pay",
+      "to": "submit",
+      "type": "extend"
+    },
+    {
+      "from": "appeal",
+      "to": "track",
+      "type": "generalization"
+    }
+  ]
+}

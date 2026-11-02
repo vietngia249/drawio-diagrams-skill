@@ -1,0 +1,25 @@
+{
+  "type": "erd",
+  "title": "Synthetic UTF-8 ERD: Khách hàng & đơn hàng <demo>",
+  "entities": [
+    {
+      "name": "Customer Registry With Long Name",
+      "attributes": [
+        { "name": "customer_id", "type": "BIGINT", "key": "PK" },
+        { "name": "họ_tên & mô_tả", "type": "NVARCHAR(240)" },
+        { "name": "địa_chỉ\n(dòng 2 <XML> & ký tự)", "type": "NVARCHAR(500)\nghi chú dài" },
+        { "name": "email", "type": "VARCHAR(320)" },
+        { "name": "số_điện_thoại", "type": "VARCHAR(40)" },
+        { "name": "ngày_tạo", "type": "TIMESTAMP" },
+        { "name": "trạng_thái", "type": "VARCHAR(32)" },
+        { "name": "ghi_chú_bổ_sung", "type": "NVARCHAR(1000)" },
+        { "name": "mã_xác_thực", "type": "VARCHAR(128)" },
+        { "name": "ngày_cập_nhật", "type": "TIMESTAMP" },
+        { "name": "nguồn_dữ_liệu", "type": "NVARCHAR(120)" },
+        { "name": "thông_tin_mở_rộng", "type": "JSON" }
+      ]
+    },
+    { "name": "Order", "attributes": [ { "name": "order_id", "type": "BIGINT", "key": "PK" }, { "name": "customer_id", "type": "BIGINT", "key": "FK" }, { "name": "tổng_tiền", "type": "DECIMAL(12,2)" } ] }
+  ],
+  "relations": [ { "from": "Order", "to": "Customer Registry With Long Name", "fromAttribute": "customer_id", "toAttribute": "customer_id", "fromCardinality": "1", "toCardinality": "0..*", "name": "được đặt bởi & liên kết <khách>" } ]
+}

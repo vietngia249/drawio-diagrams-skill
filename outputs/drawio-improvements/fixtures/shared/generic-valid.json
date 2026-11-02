@@ -1,0 +1,9 @@
+{
+  "title": "Shared core fixture",
+  "page": { "width": 360, "height": 240 },
+  "elements": [
+    { "vertex": true, "id": "source", "value": "A & B", "geometry": { "x": 20, "y": 20, "width": 100, "height": 50 } },
+    { "edge": true, "attrs": { "id": "link", "source": "source", "target": "target", "value": "connects" }, "geometry": { "relative": 1 } },
+    { "vertex": true, "attrs": { "id": "target", "value": "Target", "parent": "1" }, "geometry": { "x": 220, "y": 20, "width": 100, "height": 50 } }
+  ]
+}

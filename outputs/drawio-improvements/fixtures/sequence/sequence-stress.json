@@ -1,0 +1,46 @@
+{
+  "type": "sequence",
+  "title": "Unicode & XML-sensitive sequence fixture",
+  "page": {"width": 1400, "height": 1450},
+  "participants": [
+    {"id": "user", "label": "客户 / User & browser"},
+    {"id": "gateway", "label": "Gateway <HTTP>"},
+    {"id": "worker", "label": "Background worker"}
+  ],
+  "messages": [
+    {"order": 1, "from": "user", "to": "gateway", "label": "POST /orders & validate\nname = \"Zoë <李>\"", "kind": "sync"},
+    {"order": 9, "from": "gateway", "to": "user", "label": "Return <accepted> & queued", "kind": "return"}
+  ],
+  "fragments": [
+    {
+      "kind": "alt",
+      "order": 2,
+      "branches": [
+        {
+          "guard": "[customer is authenticated & inventory confirms that every requested item is available before reservation expires]",
+          "messages": [
+            {"order": 1, "from": "gateway", "to": "worker", "label": "Enqueue reservation request with long-lived idempotency token", "kind": "async"},
+            {"order": 1, "from": "worker", "to": "worker", "label": "Refresh local reservation lease for this request", "kind": "sync"},
+            {"order": 1, "from": "worker", "to": "gateway", "label": "Return reservation <token> & expiry\n2026-11-02T12:45:00Z", "kind": "return"}
+          ],
+          "fragments": [
+            {
+              "kind": "opt",
+              "order": 2,
+              "branches": [{"guard": "[authorization required & not previously granted]", "messages": [{"from": "gateway", "to": "worker", "label": "Request authorization asynchronously", "kind": "async"}]}]
+            },
+            {
+              "kind": "par",
+              "order": 3,
+              "branches": [
+                {"guard": "[publish audit event]", "messages": [{"from": "gateway", "to": "worker", "label": "Publish audit record", "kind": "async"}]},
+                {"guard": "[notify customer]", "messages": [{"from": "gateway", "to": "user", "label": "Send notification <queued>", "kind": "async"}]}
+              ]
+            }
+          ]
+        },
+        {"guard": "[authentication fails or one or more requested items are unavailable and the response must explain which item failed validation]", "messages": [{"from": "gateway", "to": "user", "label": "Return validation errors\n<item> & reason", "kind": "return"}]}
+      ]
+    }
+  ]
+}

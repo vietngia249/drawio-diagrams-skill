@@ -1,0 +1,6 @@
+﻿{
+  "elements": [
+    { "vertex": true, "id": "same", "geometry": { "x": 0, "y": 0, "width": -5, "height": 10 } },
+    { "vertex": true, "id": "same", "geometry": { "x": 0, "y": 0, "width": 5, "height": 10 } }
+  ]
+}

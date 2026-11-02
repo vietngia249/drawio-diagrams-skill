@@ -1,0 +1,16 @@
+{
+  "type": "dfd",
+  "title": "Synthetic UTF-8 DFD: Tra cứu & phản hồi <demo>",
+  "page": { "width": 1400, "height": 800 },
+  "nodes": [
+    { "id": "nguoi_dung", "kind": "externalEntity", "label": "Người dùng & khách hàng" },
+    { "id": "tra_cuu", "kind": "process", "label": "1. Tra cứu hồ sơ\n(tên & mã <ID>)" },
+    { "id": "ho_so", "kind": "dataStore", "label": "D1 Hồ sơ khách hàng <đã lưu>" }
+  ],
+  "flows": [
+    { "from": "nguoi_dung", "to": "tra_cuu", "label": "Tra cứu & <ID>" },
+    { "from": "tra_cuu", "to": "ho_so", "label": "Truy vấn hồ sơ (mã & trạng thái)" },
+    { "from": "ho_so", "to": "tra_cuu", "label": "Kết quả <hợp lệ> & ghi chú" },
+    { "from": "tra_cuu", "to": "nguoi_dung", "label": "Thông báo: đã xử lý & hoàn tất" }
+  ]
+}
