@@ -1,0 +1,162 @@
+{
+  "type": "activity",
+  "title": "Bắt đầu, theo dõi và hoàn tất buổi tập",
+  "page": {
+    "width": 1380,
+    "height": 1080
+  },
+  "nodes": [
+    {
+      "id": "begin",
+      "kind": "initial",
+      "x": 620,
+      "y": 30
+    },
+    {
+      "id": "choose",
+      "kind": "action",
+      "label": "Chọn kế hoạch hoặc\nbắt đầu buổi tập nhanh",
+      "x": 535,
+      "y": 95
+    },
+    {
+      "id": "plan",
+      "kind": "decision",
+      "x": 610,
+      "y": 195
+    },
+    {
+      "id": "load",
+      "kind": "action",
+      "label": "API tải kế hoạch của\nngười dùng hiện tại",
+      "x": 825,
+      "y": 270
+    },
+    {
+      "id": "manual",
+      "kind": "action",
+      "label": "Dùng tên mặc định\nhoặc tên đã nhập",
+      "x": 300,
+      "y": 270
+    },
+    {
+      "id": "create",
+      "kind": "action",
+      "label": "Tạo buổi tập đang diễn ra;\nsao chép bài tập và hiệp mục tiêu\nnếu kế hoạch hợp lệ",
+      "x": 535,
+      "y": 380
+    },
+    {
+      "id": "local",
+      "kind": "action",
+      "label": "Giao diện lưu trạng thái\nđang tập vào localStorage",
+      "x": 535,
+      "y": 510
+    },
+    {
+      "id": "sets",
+      "kind": "action",
+      "label": "Cập nhật hiệp trong giao diện;\ncó thể thêm hoặc xóa hiệp/bài tập",
+      "x": 535,
+      "y": 625
+    },
+    {
+      "id": "finish",
+      "kind": "action",
+      "label": "Gửi thời lượng và dữ liệu\nbài tập/hiệp tới API hoàn tất",
+      "x": 535,
+      "y": 755
+    },
+    {
+      "id": "owned",
+      "kind": "decision",
+      "x": 610,
+      "y": 855
+    },
+    {
+      "id": "notfound",
+      "kind": "flowFinal",
+      "x": 1030,
+      "y": 915
+    },
+    {
+      "id": "persist",
+      "kind": "action",
+      "label": "API upsert hiệp; tính tổng khối lượng\nvà cập nhật trạng thái hoàn tất",
+      "x": 300,
+      "y": 915
+    },
+    {
+      "id": "done",
+      "kind": "final",
+      "x": 620,
+      "y": 970
+    }
+  ],
+  "transitions": [
+    {
+      "to": "choose",
+      "from": "begin"
+    },
+    {
+      "to": "plan",
+      "from": "choose"
+    },
+    {
+      "to": "load",
+      "guard": "[chọn kế hoạch]",
+      "from": "plan"
+    },
+    {
+      "to": "manual",
+      "guard": "[buổi tập nhanh]",
+      "from": "plan"
+    },
+    {
+      "to": "create",
+      "guard": "[kế hoạch thuộc người dùng]",
+      "from": "load"
+    },
+    {
+      "to": "create",
+      "from": "manual"
+    },
+    {
+      "to": "local",
+      "from": "create"
+    },
+    {
+      "to": "sets",
+      "label": "Theo dõi hiệp và bài tập",
+      "from": "local"
+    },
+    {
+      "to": "local",
+      "guard": "[còn bài tập hoặc hiệp cần theo dõi]",
+      "from": "sets"
+    },
+    {
+      "to": "finish",
+      "guard": "[người dùng hoàn tất]",
+      "from": "sets"
+    },
+    {
+      "to": "owned",
+      "from": "finish"
+    },
+    {
+      "to": "persist",
+      "guard": "[session thuộc userId]",
+      "from": "owned"
+    },
+    {
+      "to": "notfound",
+      "guard": "[không tìm thấy]",
+      "from": "owned"
+    },
+    {
+      "to": "done",
+      "from": "persist"
+    }
+  ]
+}

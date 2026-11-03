@@ -1,0 +1,64 @@
+{
+  "type": "usecase",
+  "title": "Quản lý và ghi nhận buổi tập",
+  "systemName": "FitTrackAI — Quản lý buổi tập",
+  "page": {
+    "width": 1800,
+    "height": 1100
+  },
+  "actors": [
+    {
+      "id": "athlete",
+      "label": "Vận động viên\n(đã xác thực)"
+    }
+  ],
+  "useCases": [
+    {
+      "id": "plans",
+      "label": "Tạo và xem\nkế hoạch tập"
+    },
+    {
+      "id": "start",
+      "label": "Bắt đầu buổi tập\ntừ kế hoạch hoặc nhanh"
+    },
+    {
+      "id": "track",
+      "label": "Theo dõi buổi tập\nvà ghi nhận hiệp"
+    },
+    {
+      "id": "finish",
+      "label": "Hoàn tất và lưu\nbuổi tập"
+    },
+    {
+      "id": "history",
+      "label": "Xem lịch sử\nbuổi tập"
+    }
+  ],
+  "relationships": [
+    {
+      "from": "athlete",
+      "to": "plans",
+      "type": "association"
+    },
+    {
+      "from": "athlete",
+      "to": "start",
+      "type": "association"
+    },
+    {
+      "from": "athlete",
+      "to": "track",
+      "type": "association"
+    },
+    {
+      "from": "athlete",
+      "to": "finish",
+      "type": "association"
+    },
+    {
+      "from": "athlete",
+      "to": "history",
+      "type": "association"
+    }
+  ]
+}

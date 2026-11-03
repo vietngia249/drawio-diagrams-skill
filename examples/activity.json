@@ -1,27 +1,162 @@
 {
   "type": "activity",
-  "title": "Xử lý hồ sơ đăng ký & kết quả",
-  "page": { "width": 1120, "height": 760 },
+  "title": "Bắt đầu, theo dõi và hoàn tất buổi tập",
+  "page": {
+    "width": 1380,
+    "height": 1080
+  },
   "nodes": [
-    { "id": "start", "kind": "initial", "x": 500, "y": 35 },
-    { "id": "receive", "kind": "action", "label": "Tiếp nhận\nhồ sơ & tài liệu", "x": 440, "y": 110 },
-    { "id": "decision", "kind": "decision", "x": 480, "y": 220 },
-    { "id": "review", "kind": "action", "label": "Yêu cầu bổ sung\n«thiếu giấy tờ»", "x": 145, "y": 340 },
-    { "id": "approve", "kind": "action", "label": "Phê duyệt &\nphát hành kết quả", "x": 715, "y": 340 },
-    { "id": "merge", "kind": "merge", "x": 480, "y": 485 },
-    { "id": "notify", "kind": "action", "label": "Gửi thông báo\nđến người nộp", "x": 440, "y": 575 },
-    { "id": "done", "kind": "final", "x": 500, "y": 680 },
-    { "id": "rejected", "kind": "flowFinal", "x": 15, "y": 540 }
+    {
+      "id": "begin",
+      "kind": "initial",
+      "x": 620,
+      "y": 30
+    },
+    {
+      "id": "choose",
+      "kind": "action",
+      "label": "Chọn kế hoạch hoặc\nbắt đầu buổi tập nhanh",
+      "x": 535,
+      "y": 95
+    },
+    {
+      "id": "plan",
+      "kind": "decision",
+      "x": 610,
+      "y": 195
+    },
+    {
+      "id": "load",
+      "kind": "action",
+      "label": "API tải kế hoạch của\nngười dùng hiện tại",
+      "x": 825,
+      "y": 270
+    },
+    {
+      "id": "manual",
+      "kind": "action",
+      "label": "Dùng tên mặc định\nhoặc tên đã nhập",
+      "x": 300,
+      "y": 270
+    },
+    {
+      "id": "create",
+      "kind": "action",
+      "label": "Tạo buổi tập đang diễn ra;\nsao chép bài tập và hiệp mục tiêu\nnếu kế hoạch hợp lệ",
+      "x": 535,
+      "y": 380
+    },
+    {
+      "id": "local",
+      "kind": "action",
+      "label": "Giao diện lưu trạng thái\nđang tập vào localStorage",
+      "x": 535,
+      "y": 510
+    },
+    {
+      "id": "sets",
+      "kind": "action",
+      "label": "Cập nhật hiệp trong giao diện;\ncó thể thêm hoặc xóa hiệp/bài tập",
+      "x": 535,
+      "y": 625
+    },
+    {
+      "id": "finish",
+      "kind": "action",
+      "label": "Gửi thời lượng và dữ liệu\nbài tập/hiệp tới API hoàn tất",
+      "x": 535,
+      "y": 755
+    },
+    {
+      "id": "owned",
+      "kind": "decision",
+      "x": 610,
+      "y": 855
+    },
+    {
+      "id": "notfound",
+      "kind": "flowFinal",
+      "x": 1030,
+      "y": 915
+    },
+    {
+      "id": "persist",
+      "kind": "action",
+      "label": "API upsert hiệp; tính tổng khối lượng\nvà cập nhật trạng thái hoàn tất",
+      "x": 300,
+      "y": 915
+    },
+    {
+      "id": "done",
+      "kind": "final",
+      "x": 620,
+      "y": 970
+    }
   ],
   "transitions": [
-    { "from": "start", "to": "receive" },
-    { "from": "receive", "to": "decision" },
-    { "from": "decision", "to": "review", "guard": "[thiếu thông tin]" },
-    { "from": "decision", "to": "approve", "guard": "[hồ sơ hợp lệ]" },
-    { "from": "review", "to": "rejected", "label": "[hết thời hạn bổ sung]" },
-    { "from": "review", "to": "merge", "label": "[đã bổ sung]" },
-    { "from": "approve", "to": "merge" },
-    { "from": "merge", "to": "notify" },
-    { "from": "notify", "to": "done" }
+    {
+      "to": "choose",
+      "from": "begin"
+    },
+    {
+      "to": "plan",
+      "from": "choose"
+    },
+    {
+      "to": "load",
+      "guard": "[chọn kế hoạch]",
+      "from": "plan"
+    },
+    {
+      "to": "manual",
+      "guard": "[buổi tập nhanh]",
+      "from": "plan"
+    },
+    {
+      "to": "create",
+      "guard": "[kế hoạch thuộc người dùng]",
+      "from": "load"
+    },
+    {
+      "to": "create",
+      "from": "manual"
+    },
+    {
+      "to": "local",
+      "from": "create"
+    },
+    {
+      "to": "sets",
+      "label": "Theo dõi hiệp và bài tập",
+      "from": "local"
+    },
+    {
+      "to": "local",
+      "guard": "[còn bài tập hoặc hiệp cần theo dõi]",
+      "from": "sets"
+    },
+    {
+      "to": "finish",
+      "guard": "[người dùng hoàn tất]",
+      "from": "sets"
+    },
+    {
+      "to": "owned",
+      "from": "finish"
+    },
+    {
+      "to": "persist",
+      "guard": "[session thuộc userId]",
+      "from": "owned"
+    },
+    {
+      "to": "notfound",
+      "guard": "[không tìm thấy]",
+      "from": "owned"
+    },
+    {
+      "to": "done",
+      "from": "persist"
+    }
   ]
 }
