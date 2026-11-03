@@ -1,4 +1,4 @@
-import { DiagramInputError, htmlText, textWidth, validatePage } from './common.mjs';
+import { DiagramInputError, fitShapeToBounds, htmlText, spacingFor, styleForRole, textWidth, validatePage } from './common.mjs';
 import { routeOrthogonalEdges } from './geometry.mjs';
 
 const text = value => String(value ?? '').trim();
@@ -14,6 +14,15 @@ function measuredLabel(value, fontSize, maxWidth, padding = 16) {
   const width = clamp(textWidth(value, fontSize) + padding, 72, maxWidth);
   const lines = wrappedLines(value, fontSize, width - padding);
   return { width, height: Math.max(fontSize + 10, Math.ceil(lines * fontSize * 1.4 + 10)) };
+}
+
+function roleTokens(presentation, { font, fontSize, strokeColor, fillColor, strokeWidth } = {}) {
+  const tokens = { ...presentation, fontSizes: { ...presentation.fontSizes }, colors: { ...presentation.colors } };
+  if (fontSize !== undefined) tokens.fontSizes[font] = fontSize;
+  if (strokeColor !== undefined) tokens.colors.stroke = strokeColor;
+  if (fillColor !== undefined) tokens.colors.fill = fillColor;
+  if (strokeWidth !== undefined) tokens.strokeWidth = strokeWidth;
+  return tokens;
 }
 
 function layoutError(diagnostics) {
@@ -63,9 +72,11 @@ export function renderUsecase(data, styles = {}) {
 
   const usecaseStyle = styles.usecase || {}, actorStyle = usecaseStyle.actor || {}, caseStyle = usecaseStyle.useCase || {};
   const boundaryStyle = usecaseStyle.boundary || {}, relationshipStyle = usecaseStyle.relationship || {};
-  const fontSize = usecaseStyle.fontSize || 14, actorFontSize = actorStyle.fontSize || fontSize;
-  const caseWidth = clamp(Math.max(0, ...cases.map(item => textWidth(item.label, fontSize))) + 44, 150, 300);
-  const caseHeight = Math.max(66, ...cases.map(item => Math.ceil(wrappedLines(item.label, fontSize, caseWidth - 40) * fontSize * 1.35 + 24)));
+  const presentation = styles.presentation || {};
+  const fontSize = presentation.fontSizes?.body ?? usecaseStyle.fontSize ?? 14, actorFontSize = actorStyle.fontSize ?? fontSize;
+  const caseFontSize = caseStyle.fontSize ?? fontSize;
+  const caseWidth = clamp(Math.max(0, ...cases.map(item => textWidth(item.label, caseFontSize))) + 44, 150, 300);
+  const caseHeight = Math.max(66, ...cases.map(item => Math.ceil(wrappedLines(item.label, caseFontSize, caseWidth - 40) * caseFontSize * 1.35 + 24)));
   const twoActorColumns = actors.length === 2 && cases.every(item => caseActors.get(item.id)?.size === 1) &&
     actors.every(actor => cases.some(item => caseActors.get(item.id)?.has(actor.id)));
   const columnByActor = new Map(actors.map((actor, index) => [actor.id, index]));
@@ -75,8 +86,12 @@ export function renderUsecase(data, styles = {}) {
   columnCases.forEach(items => items.forEach((item, row) => rowByCase.set(item.id, row)));
   const rows = Math.max(0, ...columnCases.map(items => items.length));
   const title = data.systemName || data.title || 'System';
-  const titleSize = measuredLabel(title, fontSize, 320, 16);
-  const header = Math.max(48, titleSize.height + 16), gapY = 70, gapX = 100, margin = 54, top = 55;
+  const titleFontSize = usecaseStyle.titleFontSize ?? presentation.fontSizes?.heading ?? fontSize;
+  const titleSize = measuredLabel(title, titleFontSize, 320, 16);
+  const header = Math.max(48, titleSize.height + 16);
+  const gapScale = spacingFor('nodeGap', presentation) / 32;
+  const paddingScale = spacingFor('containerPadding', presentation) / 24;
+  const gapY = 70 * gapScale, gapX = 100 * gapScale, margin = 54 * paddingScale, top = 55;
   const actorWidth = clamp(Math.max(...actors.map(actor => textWidth(actor.label, actorFontSize))) + 24, 220, 360);
   const symbolWidth = 64, symbolHeight = 72, leftActorX = actorWidth + 10;
   const boundaryLeft = leftActorX + symbolWidth + 42, columns = twoActorColumns ? 2 : 1;
@@ -106,11 +121,11 @@ export function renderUsecase(data, styles = {}) {
   const boundaryLines = [['nw', 'ne'], ['ne', 'se'], ['se', 'sw'], ['sw', 'nw']];
   boundaryLines.forEach(([from, to], index) => cells.push({
     kind: 'edge', id: `system_boundary_line_${index}`, value: '',
-    style: `edgeStyle=none;html=1;strokeColor=${boundaryStyle.strokeColor || '#000000'};strokeWidth=${boundaryStyle.strokeWidth || 1};startArrow=none;endArrow=none;`,
+    style: styleForRole('edge', roleTokens(presentation, { font: 'label', strokeColor: boundaryStyle.strokeColor, strokeWidth: boundaryStyle.strokeWidth }), 'edgeStyle=none;html=1;startArrow=none;endArrow=none;'),
     parent: '1', source: `system_boundary_${from}`, target: `system_boundary_${to}`, geometry: { relative: 1, points: [] }
   }));
   const titleBounds = { x: boundaryLeft + 12, y: top + 8, ...titleSize };
-  cells.push({ kind: 'vertex', id: 'system_boundary_title', value: htmlText(title), style: `text;html=1;whiteSpace=wrap;align=left;verticalAlign=middle;fillColor=none;strokeColor=none;fontSize=${fontSize};`, parent: '1', geometry: titleBounds });
+  cells.push({ kind: 'vertex', id: 'system_boundary_title', value: htmlText(title), style: styleForRole('heading', roleTokens(presentation, { font: 'heading', fontSize: titleFontSize }), 'text;html=1;whiteSpace=wrap;align=left;verticalAlign=middle;'), parent: '1', geometry: titleBounds });
   obstacles.push({ id: 'system_boundary_title', kind: 'label', bounds: titleBounds });
 
   cases.forEach(item => {
@@ -120,7 +135,10 @@ export function renderUsecase(data, styles = {}) {
     caseBounds.set(item.id, pageBounds);
     cells.push({
       kind: 'vertex', id: `usecase_${key(item.id)}`, value: htmlText(item.label),
-      style: `shape=${caseStyle.shape || 'ellipse'};html=1;whiteSpace=wrap;fillColor=${caseStyle.fillColor || '#ffffff'};strokeColor=${caseStyle.strokeColor || '#000000'};strokeWidth=${caseStyle.strokeWidth || 1};fontSize=${fontSize};`,
+      style: styleForRole('node', roleTokens(presentation, {
+        font: 'body', fontSize: caseFontSize,
+        fillColor: caseStyle.fillColor, strokeColor: caseStyle.strokeColor, strokeWidth: caseStyle.strokeWidth
+      }), `shape=${caseStyle.shape || 'ellipse'};html=1;whiteSpace=wrap;`),
       parent: 'system_boundary', geometry: { x, y, width: caseWidth, height: caseHeight }
     });
     obstacles.push({ id: `usecase_${key(item.id)}`, kind: 'node', bounds: pageBounds });
@@ -137,11 +155,16 @@ export function renderUsecase(data, styles = {}) {
     const labelX = side === 'left' ? 0 : symbolX + symbolWidth + 8;
     const labelY = symbolY + symbolHeight / 2 - labelMetrics.height / 2;
     const actorId = `actor_${key(actor.id)}`, labelId = `actor_label_${key(actor.id)}`;
-    const symbolBounds = { x: symbolX, y: symbolY, width: symbolWidth, height: symbolHeight };
+    const symbolBounds = fitShapeToBounds({ x: symbolX, y: symbolY, width: symbolWidth, height: symbolHeight }, presentation.proportions?.actor ?? 64 / 72);
     const labelBounds = { x: labelX, y: labelY, ...labelMetrics };
     actorLayout.set(actor.id, { id: actorId, side, bounds: symbolBounds });
-    cells.push({ kind: 'vertex', id: actorId, value: '', style: `shape=${actorStyle.shape || 'umlActor'};html=1;fillColor=${actorStyle.fillColor || '#ffffff'};strokeColor=${actorStyle.strokeColor || '#000000'};strokeWidth=${actorStyle.strokeWidth || 1};`, parent: '1', geometry: symbolBounds });
-    cells.push({ kind: 'vertex', id: labelId, value: htmlText(actor.label), style: `text;html=1;whiteSpace=wrap;align=${side === 'left' ? 'right' : 'left'};verticalAlign=middle;fillColor=none;strokeColor=none;fontSize=${actorFontSize};`, parent: '1', geometry: labelBounds });
+    cells.push({ kind: 'vertex', id: actorId, value: '', style: styleForRole('node', roleTokens(presentation, {
+      font: 'body', fontSize: actorStyle.fontSize ?? fontSize, fillColor: actorStyle.fillColor,
+      strokeColor: actorStyle.strokeColor, strokeWidth: actorStyle.strokeWidth
+    }), `shape=${actorStyle.shape || 'umlActor'};html=1;`), parent: '1', geometry: symbolBounds });
+    cells.push({ kind: 'vertex', id: labelId, value: htmlText(actor.label), style: styleForRole('label', roleTokens(presentation, {
+      font: 'label', fontSize: actorStyle.fontSize ?? presentation.fontSizes?.label ?? actorFontSize
+    }), `text;html=1;whiteSpace=wrap;align=${side === 'left' ? 'right' : 'left'};verticalAlign=middle;`), parent: '1', geometry: labelBounds });
     obstacles.push({ id: actorId, kind: 'node', bounds: symbolBounds }, { id: labelId, kind: 'label', bounds: labelBounds });
   });
 
@@ -164,13 +187,13 @@ export function renderUsecase(data, styles = {}) {
         request.target.port = { side, preferredOffset: 0.5 };
       }
     }
-    if (relationship.label) request.label = { id: `relationship_label_${key(relationship.semanticId)}`, ...measuredLabel(relationship.label, relationshipStyle.fontSize || fontSize, 220) };
+    if (relationship.label) request.label = { id: `relationship_label_${key(relationship.semanticId)}`, ...measuredLabel(relationship.label, relationshipStyle.fontSize ?? presentation.fontSizes?.label ?? fontSize, 220) };
     return { relationship, request };
   });
 
   // Boundary containment is intentional. Route against its title and visible
   // contents, but omit the enclosing rectangle as a blocker so edges can enter.
-  const routed = routeOrthogonalEdges({ obstacles, edges: requests.map(item => item.request), page, clearance: usecaseStyle.clearance ?? 12 });
+  const routed = routeOrthogonalEdges({ obstacles, edges: requests.map(item => item.request), page, clearance: usecaseStyle.clearance ?? spacingFor('routeClearance', presentation) });
   diagnostics.push(...routed.diagnostics);
   layoutError(diagnostics);
   const routeById = new Map(routed.routes.map(route => [route.edgeId, route]));
@@ -178,7 +201,10 @@ export function renderUsecase(data, styles = {}) {
     const route = routeById.get(request.id);
     if (!route) continue;
     const association = relationship.type === 'association';
-    let lineStyle = `edgeStyle=none;rounded=0;html=1;strokeColor=${relationshipStyle.strokeColor || '#000000'};strokeWidth=${relationshipStyle.strokeWidth || 1};`;
+    let lineStyle = styleForRole('edge', roleTokens(presentation, {
+      font: 'label', fontSize: relationshipStyle.fontSize ?? presentation.fontSizes?.label,
+      strokeColor: relationshipStyle.strokeColor, strokeWidth: relationshipStyle.strokeWidth
+    }), 'edgeStyle=none;rounded=0;html=1;');
     if (association) lineStyle += 'startArrow=none;endArrow=none;';
     else if (relationship.type === 'include' || relationship.type === 'extend') lineStyle += 'dashed=1;dashPattern=6 4;endArrow=open;endFill=0;endSize=8;';
     else lineStyle += 'endArrow=block;endFill=0;';
@@ -189,7 +215,7 @@ export function renderUsecase(data, styles = {}) {
     });
     if (relationship.label && route.label) cells.push({
       kind: 'vertex', id: request.label.id, value: htmlText(relationship.label),
-      style: `text;html=1;whiteSpace=wrap;align=center;verticalAlign=middle;fillColor=none;strokeColor=none;fontSize=${relationshipStyle.fontSize || fontSize};`,
+      style: styleForRole('label', roleTokens(presentation, { font: 'label', fontSize: relationshipStyle.fontSize ?? presentation.fontSizes?.label ?? fontSize }), 'text;html=1;whiteSpace=wrap;align=center;verticalAlign=middle;'),
       parent: '1', geometry: { x: route.label.bounds.x, y: route.label.bounds.y, width: route.label.bounds.width, height: route.label.bounds.height }
     });
   }

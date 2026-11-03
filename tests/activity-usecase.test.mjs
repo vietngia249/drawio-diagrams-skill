@@ -25,6 +25,17 @@ function render(inputName) {
   return { cells, byId: new Map(cells.map(cell => [cell.attrs.id, cell])), output };
 }
 
+function renderWithStyle(inputName, style, fromExamples = false) {
+  const input = path.join(fromExamples ? path.join(root, 'examples') : fixtures, inputName);
+  const output = path.join(temp, `${path.basename(inputName, '.json')}-styled.drawio`);
+  const stylePath = path.join(temp, `${path.basename(inputName, '.json')}-style.json`);
+  fs.writeFileSync(stylePath, JSON.stringify(style));
+  const run = spawnSync(process.execPath, ['scripts/render_drawio.mjs', input, '-o', output, '--style', stylePath], { cwd: root, encoding: 'utf8' });
+  assert.equal(run.status, 0, run.stderr);
+  const cells = cellsFromModel(parseDrawioText(fs.readFileSync(output, 'utf8')).graph);
+  return { cells, byId: new Map(cells.map(cell => [cell.attrs.id, cell])), output };
+}
+
 function renderExample(inputName) {
   const input = path.join(root, 'examples', inputName), output = path.join(temp, `example-${inputName}`);
   const run = spawnSync(process.execPath, ['scripts/render_drawio.mjs', input, '-o', output], { cwd: root, encoding: 'utf8' });
@@ -236,4 +247,48 @@ test('activity finals retain separate flow-final and activity-final marks', () =
   assert.ok(!byId.has('activity_cancelled_inner'), 'flow final must not get an activity-final inner mark');
   assert.match(byId.get('activity_cancelled').attrs.style, /strokeWidth=1\.5/);
   assert.match(byId.get('activity_cancelled').attrs.value, /×|&#215;/);
+});
+
+test('shared presentation tokens change activity and use-case typography/layout without changing semantics', () => {
+  const style = {
+    presentation: {
+      fontFamily: 'Verdana',
+      fontSizes: { body: 20, heading: 22, label: 18, small: 16 },
+      spacing: { nodeGap: 40, containerPadding: 30 }
+    },
+    activity: { action: { fillColor: '#ffeecc', strokeColor: '#123456', strokeWidth: 2 }, edge: { strokeColor: '#345678', strokeWidth: 3 } },
+    usecase: { actor: { fillColor: '#ddffdd', strokeColor: '#234567', strokeWidth: 2 }, relationship: { strokeColor: '#456789', strokeWidth: 4 } }
+  };
+
+  const activityBefore = render('activity-routing.json'), activityAfter = renderWithStyle('activity-routing.json', style);
+  const activitySemantics = cells => cells.filter(cell => cell.edge && cell.attrs.id.startsWith('transition_'))
+    .map(cell => [cell.attrs.id, cell.attrs.source, cell.attrs.target, cell.attrs.value]);
+  assert.deepEqual(activitySemantics(activityAfter.cells), activitySemantics(activityBefore.cells));
+  const actionBefore = activityBefore.cells.find(cell => cell.attrs.id === 'activity_track');
+  const actionAfter = activityAfter.byId.get('activity_track');
+  assert.match(actionAfter.attrs.style, /fontSize=20;/);
+  assert.match(actionAfter.attrs.style, /fontFamily=Verdana;/);
+  assert.match(actionAfter.attrs.style, /fillColor=#ffeecc;/);
+  assert.match(actionAfter.attrs.style, /strokeColor=#123456;/);
+  assert.ok(Number(actionAfter.geometry.width) > Number(actionBefore.geometry.width) || Number(actionAfter.geometry.height) > Number(actionBefore.geometry.height),
+    'activity action geometry responds to body typography');
+  assert.ok(activityAfter.cells.some(cell => cell.vertex && cell.attrs.id.startsWith('transition_label_') && /fontSize=16;/.test(cell.attrs.style)));
+  assert.ok(activityAfter.cells.some(cell => cell.edge && cell.attrs.id.startsWith('transition_') && /strokeColor=#345678;strokeWidth=3;/.test(cell.attrs.style)));
+
+  const usecaseBefore = render('usecase-routing.json'), usecaseAfter = renderWithStyle('usecase-routing.json', style);
+  const usecaseSemantics = cells => cells.filter(cell => cell.edge && cell.attrs.id.startsWith('relationship_'))
+    .map(cell => [cell.attrs.id, cell.attrs.source, cell.attrs.target, cell.attrs.value, /startArrow=none;endArrow=none;/.test(cell.attrs.style)]);
+  assert.deepEqual(usecaseSemantics(usecaseAfter.cells), usecaseSemantics(usecaseBefore.cells));
+  const actor = usecaseAfter.byId.get('actor_athlete'), actorLabel = usecaseAfter.byId.get('actor_label_athlete');
+  assert.match(actor.attrs.style, /shape=umlActor;/);
+  assert.match(actor.attrs.style, /fillColor=#ddffdd;/);
+  assert.match(actor.attrs.style, /strokeColor=#234567;strokeWidth=2;/);
+  assert.equal(Number(actor.geometry.width) / Number(actor.geometry.height), 64 / 72);
+  assert.match(actorLabel.attrs.style, /fontSize=18;/);
+  assert.match(usecaseAfter.byId.get('usecase_plans').attrs.style, /fontSize=20;/);
+  assert.ok(Number(usecaseAfter.byId.get('usecase_plans').geometry.height) > Number(usecaseBefore.byId.get('usecase_plans').geometry.height),
+    'use-case node height responds to body typography');
+  assert.match(usecaseAfter.byId.get('relationship_athlete-plans').attrs.style, /strokeColor=#456789;strokeWidth=4;/);
+  assert.notEqual(Number(usecaseAfter.byId.get('usecase_history').geometry.y), Number(usecaseBefore.byId.get('usecase_history').geometry.y),
+    'use-case row placement responds to shared node spacing');
 });

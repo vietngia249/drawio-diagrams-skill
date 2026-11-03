@@ -1,4 +1,4 @@
-import { DiagramInputError, htmlText, textWidth, validatePage } from './common.mjs';
+import { DiagramInputError, htmlText, spacingFor, styleForRole, textWidth, validatePage } from './common.mjs';
 import { routeOrthogonalEdges } from './geometry.mjs';
 
 const text = value => String(value ?? '').trim();
@@ -14,6 +14,15 @@ function labelSize(value, fontSize, maxWidth = 240) {
   const width = clamp(textWidth(value, fontSize) + 16, 72, maxWidth);
   const lines = lineCount(value, fontSize, width - 16);
   return { width, height: Math.max(fontSize + 10, Math.ceil(lines * fontSize * 1.4 + 10)) };
+}
+
+function roleTokens(presentation, { font, fontSize, strokeColor, fillColor, strokeWidth } = {}) {
+  const tokens = { ...presentation, fontSizes: { ...presentation.fontSizes }, colors: { ...presentation.colors } };
+  if (fontSize !== undefined) tokens.fontSizes[font] = fontSize;
+  if (strokeColor !== undefined) tokens.colors.stroke = strokeColor;
+  if (fillColor !== undefined) tokens.colors.fill = fillColor;
+  if (strokeWidth !== undefined) tokens.strokeWidth = strokeWidth;
+  return tokens;
 }
 
 function pageFor(data, positions) {
@@ -85,13 +94,15 @@ export function renderActivity(data, styles = {}) {
   }
 
   const activityStyle = styles.activity || {}, actionStyle = activityStyle.action || {}, nodeStyle = activityStyle.node || {}, edgeStyle = activityStyle.edge || {};
-  const fontSize = activityStyle.fontSize || 14, positions = new Map();
+  const presentation = styles.presentation || {};
+  const fontSize = activityStyle.fontSize ?? presentation.fontSizes?.body ?? 14, positions = new Map();
   nodes.forEach((node, index) => {
     const kind = node.kind, label = text(node.label);
+    const nodeFontSize = kind === 'action' ? actionStyle.fontSize ?? fontSize : nodeStyle.fontSize ?? fontSize;
     let width, height;
     if (kind === 'action') {
-      width = clamp(textWidth(label, fontSize) + 32, 150, 240);
-      height = Math.max(58, Math.ceil(lineCount(label, fontSize, width - 32) * fontSize * 1.5 + 20));
+      width = clamp(textWidth(label, nodeFontSize) + 32, 150, 240);
+      height = Math.max(58, Math.ceil(lineCount(label, nodeFontSize, width - 32) * nodeFontSize * 1.5 + 20));
     } else if (kind === 'decision' || kind === 'merge') width = height = 72;
     else width = height = 34;
     positions.set(node.id, {
@@ -111,8 +122,14 @@ export function renderActivity(data, styles = {}) {
     const geometry = positions.get(node.id), cellId = `activity_${key(node.id)}`, kind = node.kind;
     nodeCellIds.set(node.id, cellId);
     let style, label = text(node.label);
-    if (kind === 'action') style = `rounded=1;arcSize=20;whiteSpace=wrap;html=1;fillColor=${actionStyle.fillColor || '#ffffff'};strokeColor=${actionStyle.strokeColor || '#000000'};strokeWidth=${actionStyle.strokeWidth || 1};fontSize=${fontSize};`;
-    else if (kind === 'decision' || kind === 'merge') style = `rhombus;whiteSpace=wrap;html=1;fillColor=${nodeStyle.fillColor || '#ffffff'};strokeColor=${nodeStyle.strokeColor || '#000000'};strokeWidth=${nodeStyle.strokeWidth || 1};fontSize=${fontSize};`;
+    if (kind === 'action') style = styleForRole('node', roleTokens(presentation, {
+      font: 'body', fontSize: actionStyle.fontSize ?? fontSize,
+      fillColor: actionStyle.fillColor, strokeColor: actionStyle.strokeColor, strokeWidth: actionStyle.strokeWidth
+    }), `rounded=1;arcSize=20;whiteSpace=wrap;html=1;`);
+    else if (kind === 'decision' || kind === 'merge') style = styleForRole('node', roleTokens(presentation, {
+      font: 'body', fontSize: nodeStyle.fontSize ?? fontSize,
+      fillColor: nodeStyle.fillColor, strokeColor: nodeStyle.strokeColor, strokeWidth: nodeStyle.strokeWidth
+    }), `rhombus;whiteSpace=wrap;html=1;`);
     else if (kind === 'initial') style = 'ellipse;html=1;fillColor=#000000;strokeColor=#000000;';
     else if (kind === 'flowFinal') { style = 'ellipse;html=1;fillColor=#ffffff;strokeColor=#000000;strokeWidth=1.5;'; label = '×'; }
     else if (kind === 'final' || kind === 'activityFinal') style = 'ellipse;html=1;fillColor=#ffffff;strokeColor=#000000;strokeWidth=2;';
@@ -163,7 +180,7 @@ export function renderActivity(data, styles = {}) {
     if (label) request.label = { id: `transition_label_${key(semanticId)}`, ...labelSize(label, labelFontSize, 120) };
     return { transition, request, label };
   });
-  const routed = routeWithPortFallback(obstacles, edgeRequests.map(item => item.request), page, activityStyle.clearance ?? 12);
+  const routed = routeWithPortFallback(obstacles, edgeRequests.map(item => item.request), page, activityStyle.clearance ?? spacingFor('routeClearance', presentation));
   diagnostics.push(...routed.diagnostics);
   layoutError(diagnostics);
 
@@ -171,7 +188,10 @@ export function renderActivity(data, styles = {}) {
   for (const { transition, request, label } of edgeRequests) {
     const route = routeById.get(request.id);
     if (!route) continue;
-    const style = `edgeStyle=none;rounded=0;html=1;strokeColor=${edgeStyle.strokeColor || '#000000'};strokeWidth=${edgeStyle.strokeWidth || 1};endArrow=block;endFill=1;`;
+    const style = styleForRole('edge', roleTokens(presentation, {
+      font: 'label', fontSize: edgeStyle.fontSize ?? Math.min(fontSize, presentation.fontSizes?.small ?? 12),
+      strokeColor: edgeStyle.strokeColor, strokeWidth: edgeStyle.strokeWidth
+    }), `edgeStyle=none;rounded=0;html=1;endArrow=block;endFill=1;`);
     cells.push({
       kind: 'edge', id: request.id, value: '', style, parent: '1', source: request.source.nodeId, target: request.target.nodeId,
       ports: { source: { side: route.sourcePort.side, offset: route.sourcePort.offset }, target: { side: route.targetPort.side, offset: route.targetPort.offset } },
@@ -179,7 +199,7 @@ export function renderActivity(data, styles = {}) {
     });
     if (label && route.label) cells.push({
       kind: 'vertex', id: request.label.id, value: htmlText(label),
-      style: `text;html=1;whiteSpace=wrap;align=center;verticalAlign=middle;fillColor=none;strokeColor=none;fontSize=${edgeStyle.fontSize || Math.min(fontSize, 12)};`,
+      style: styleForRole('small', roleTokens(presentation, { font: 'small', fontSize: edgeStyle.fontSize ?? Math.min(fontSize, presentation.fontSizes?.small ?? 12) }), 'text;html=1;whiteSpace=wrap;align=center;verticalAlign=middle;'),
       parent: '1', geometry: { x: route.label.bounds.x, y: route.label.bounds.y, width: route.label.bounds.width, height: route.label.bounds.height }
     });
   }

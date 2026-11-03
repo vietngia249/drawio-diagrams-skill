@@ -5,15 +5,16 @@ import os from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { docXml, htmlText } from '../scripts/common.mjs';
+import { docXml, htmlText, serializeCells } from '../scripts/common.mjs';
 import { cellsFromModel, parseDrawioText } from '../scripts/drawio_xml.mjs';
+import { renderInput } from '../scripts/render_drawio.mjs';
 import { renderSequence } from '../scripts/sequence.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const fixture = name => JSON.parse(fs.readFileSync(path.join(root, 'tests/fixtures/sequence', name), 'utf8'));
 const parseCells = xml => cellsFromModel(parseDrawioText(xml).graph);
-const renderCells = data => renderSequence(data, {});
-const renderModel = data => parseCells(docXml(data.title || 'Sequence regression', renderCells(data), data.page));
+const renderCells = (data, style = {}) => renderSequence(data, style).cells;
+const renderModel = (data, style = {}) => parseCells(docXml(data.title || 'Sequence regression', serializeCells(renderCells(data, style)), data.page));
 const byId = cells => new Map(cells.map(cell => [cell.attrs.id, cell]));
 const geom = cell => Object.fromEntries(['x', 'y', 'width', 'height'].map(key => [key, Number(cell.geometry[key] || 0)]));
 const points = edge => edge.geometry.points.filter(point => !point.as || point.as === 'points').map(point => ({ x: Number(point.x), y: Number(point.y) }));
@@ -28,6 +29,86 @@ const segmentsFor = (edge, cells) => {
 };
 const segmentKey = ([a, b]) => `${Math.min(a.x, b.x)},${Math.min(a.y, b.y)}:${Math.max(a.x, b.x)},${Math.max(a.y, b.y)}`;
 const fitTrack = () => fixture('fittrackai-utf8.json');
+
+test('sequence renderer returns the shared model contract and applies presentation tokens without changing notation', () => {
+  const data = {
+    type: 'sequence', participants: [{ id: 'actor', label: 'Actor', shape: 'umlActor' }, 'Service'],
+    messages: [
+      { kind: 'sync', from: 'actor', to: 'Service', label: 'Call' },
+      { kind: 'async', from: 'Service', to: 'actor', label: 'Signal' },
+      { kind: 'return', from: 'actor', to: 'Service', label: 'Reply' },
+      { kind: 'sync', from: 'Service', to: 'Service', label: 'Self call' }
+    ],
+    fragments: [{ kind: 'alt', branches: [
+      { guard: '[valid]', messages: [{ kind: 'sync', from: 'actor', to: 'Service', label: 'Accept' }] },
+      { guard: '[invalid]', messages: [{ kind: 'return', from: 'Service', to: 'actor', label: 'Reject' }] }
+    ] }]
+  };
+  const tokens = {
+    fontFamily: 'Georgia', fontSizes: { heading: 20, body: 15, label: 18 },
+    colors: { stroke: '#154360', fill: '#f7f9f9', mutedStroke: '#607d8b' }, strokeWidth: 3,
+    label: { paddingX: 11, paddingY: 5, background: '#fff8e1' },
+    spacing: { nodeGap: 46, containerPadding: 38, routeClearance: 15, laneSpacing: 26 },
+    selfMessage: { width: 42, height: 30, offset: 20, trackGap: 14 }
+  };
+  const standard = renderSequence(data, {}), themed = renderSequence(data, { presentation: tokens });
+  assert.ok(Array.isArray(themed.cells), 'renderer should return shared model cells');
+  assert.deepEqual(themed.diagnostics, []);
+  const cells = themed.cells, byModelId = new Map(cells.map(cell => [cell.id, cell]));
+  assert.match(byModelId.get('participant_header_0').style, /shape=umlActor/);
+  assert.deepEqual([byModelId.get('participant_header_0').geometry.width, byModelId.get('participant_header_0').geometry.height], [64, 72],
+    'the native UML actor retains its 64:72 stencil proportions');
+  assert.match(byModelId.get('participant_header_1').style, /shape=umlLifeline/);
+  assert.match(byModelId.get('participant_header_1').style, /fontFamily=Georgia/);
+  assert.match(byModelId.get('participant_header_1').style, /fontSize=20/);
+  assert.match(byModelId.get('participant_header_1').style, /strokeColor=#607d8b/);
+  assert.match(byModelId.get('participant_header_1').style, /strokeWidth=3/);
+  assert.match(byModelId.get('message_label_0').style, /fillColor=#fff8e1/);
+  assert.match(byModelId.get('message_label_0').style, /fontSize=18/);
+  assert.ok(byModelId.get('participant_1').geometry.x > standard.cells.find(cell => cell.id === 'participant_1').geometry.x,
+    'nodeGap token should move later participants');
+  assert.notDeepEqual(byModelId.get('message_3').geometry.points, standard.cells.find(cell => cell.id === 'message_3').geometry.points,
+    'selfMessage tokens should alter the self-call track');
+
+  for (const [index, arrow, dashed] of [[0, 'block', '0'], [1, 'open', '0'], [2, 'open', '1']]) {
+    const style = byModelId.get(`message_${index}`).style;
+    assert.match(style, new RegExp(`(?:^|;)endArrow=${arrow}(?:;|$)`));
+    assert.match(style, new RegExp(`(?:^|;)dashed=${dashed}(?:;|$)`));
+  }
+  const frames = cells.filter(cell => cell.id.startsWith('fragment_') && cell.kind === 'vertex' && /shape=umlFrame/.test(cell.style));
+  assert.ok(frames.some(frame => frame.value === 'alt'), 'the fragment operator remains semantic');
+  assert.ok(cells.some(cell => cell.id.includes('_guard_') && cell.value.includes('valid')));
+  assert.ok(cells.some(cell => cell.id.includes('_sep_') && /dashed=1/.test(cell.style) && /endArrow=none/.test(cell.style)),
+    'fragment separators remain dashed and unarrowed');
+});
+
+test('sequence stress layout expands its explicit page to contain final cells', () => {
+  const input = JSON.parse(fs.readFileSync(path.join(root, 'outputs/drawio-improvements/fixtures/sequence/sequence-stress.json'), 'utf8'));
+  const rendered = renderInput(input);
+  assert.ok(rendered.page.width > input.page.width, 'page width should grow when participant headers exceed the requested size');
+  assert.ok(!rendered.diagnostics.some(item => item.code === 'PAGE_OVERFLOW'), 'expanded sequence page should not report clipped cells');
+  for (const cell of rendered.cells) if (cell.kind === 'vertex' && cell.parent === '1') {
+    assert.ok(cell.geometry.x + cell.geometry.width <= rendered.page.width, `${cell.id} should fit within expanded page width`);
+    assert.ok(cell.geometry.y + cell.geometry.height <= rendered.page.height, `${cell.id} should fit within expanded page height`);
+  }
+});
+
+test('legacy sequence presentation overrides remain effective beside shared tokens', () => {
+  const data = { type: 'sequence', participants: [{ id: 'A', label: 'Actor', shape: 'umlActor' }, 'B'],
+    messages: [{ kind: 'sync', from: 'A', to: 'B', label: 'Call' }] };
+  const result = renderSequence(data, {
+    presentation: { fontFamily: 'Georgia', colors: { stroke: '#222222' } },
+    sequence: { fontFamily: 'Courier New', fontSize: 18,
+      participant: { strokeColor: '#aabbcc' }, message: { strokeColor: '#ff0000', strokeWidth: 2, fontSize: 17 } }
+  });
+  const byId = new Map(result.cells.map(cell => [cell.id, cell]));
+  assert.match(byId.get('participant_header_1').style, /fontFamily=Courier New/);
+  assert.match(byId.get('participant_header_1').style, /strokeColor=#aabbcc/);
+  assert.match(byId.get('participant_header_1').style, /fontSize=18/);
+  assert.match(byId.get('message_0').style, /strokeColor=#ff0000/);
+  assert.match(byId.get('message_0').style, /strokeWidth=2/);
+  assert.match(byId.get('message_label_0').style, /fontSize=17/);
+});
 
 test('sequence round-trips Unicode participant labels and XML-sensitive text through draw.io XML', () => {
   const data = fitTrack();
@@ -208,7 +289,7 @@ test('unrelated sequence messages do not share route segments', () => {
 });
 
 test('planned sequence geometry is the geometry preserved by draw.io export serialization', () => {
-  const data = fitTrack(), plannedCells = renderCells(data), temp = fs.mkdtempSync(path.join(os.tmpdir(), 'sequence-geometry-'));
+  const data = fitTrack(), planned = renderInput(data), plannedCells = planned.cells, temp = fs.mkdtempSync(path.join(os.tmpdir(), 'sequence-geometry-'));
   const input = path.join(temp, 'input.json'), output = path.join(temp, 'output.drawio');
   fs.writeFileSync(input, JSON.stringify(data), 'utf8');
   const run = spawnSync(process.execPath, ['scripts/render_drawio.mjs', input, '-o', output], { cwd: root, encoding: 'utf8' });
@@ -217,10 +298,10 @@ test('planned sequence geometry is the geometry preserved by draw.io export seri
   assert.ok(outputXml.includes('Giao diện'), 'CLI XML must preserve UTF-8 participant text from the JSON input');
   assert.ok(outputXml.includes('thời lượng'), 'CLI XML must preserve UTF-8 message text from the JSON input');
   assert.doesNotMatch(outputXml, /(?:Ã|á»|Â)/u, 'CLI output must not convert correct Unicode into mojibake');
-  const planned = byId(parseCells(docXml(data.title, plannedCells, data.page)));
+  const plannedById = byId(parseCells(docXml(data.title, serializeCells(plannedCells), planned.page)));
   const exported = byId(parseCells(outputXml));
-  assert.deepEqual([...exported.keys()].sort(), [...planned.keys()].sort());
-  for (const [id, cell] of planned) {
+  assert.deepEqual([...exported.keys()].sort(), [...plannedById.keys()].sort());
+  for (const [id, cell] of plannedById) {
     assert.deepEqual(exported.get(id).geometry, cell.geometry, `export changed planned geometry for ${id}`);
   }
   fs.rmSync(temp, { recursive: true, force: true });
