@@ -1,4 +1,4 @@
-import {htmlText} from './common.mjs';
+import {htmlText, spacingFor, styleForRole} from './common.mjs';
 import {routeOrthogonalEdges} from './geometry.mjs';
 
 const kinds=new Set(['process','dataStore','externalEntity']);
@@ -40,6 +40,16 @@ function edge(id,source,target,style,route){
 }
 function overflow(bounds,page){
   return bounds.x<0||bounds.y<0||bounds.x+bounds.width>page.width||bounds.y+bounds.height>page.height;
+}
+function roleTokens(style,fontSize,presentation={},lineFill){
+  return {
+    ...presentation,
+    fontFamily:style.fontFamily,
+    fontSizes:{...presentation.fontSizes,body:fontSize,label:fontSize},
+    colors:{...presentation.colors,stroke:style.strokeColor,fill:lineFill??style.fillColor},
+    label:{...presentation.label,background:style.fillColor},
+    strokeWidth:style.strokeWidth
+  };
 }
 
 /** Render a directed DFD with process-mediated flow semantics and shared planned geometry. */
@@ -86,7 +96,7 @@ export function renderDfd(data,styleConfig){
   const columns=['externalEntity','process','dataStore'];
   const colWidths=columns.map(kind=>Math.max(0,...nodes.filter(node=>node.kind===kind).map(node=>node.width)));
   const largestLabel=Math.max(160,...normalized.map(({label})=>Math.min(360,textWidth(label,fontSize)+32)));
-  const clearance=18,colGap=Math.max(230,Math.min(560,largestLabel+2*clearance+40)),top=84,rowGap=128,pad=64;
+  const clearance=Math.max(18,spacingFor('routeClearance',styleConfig?.presentation)),colGap=Math.max(230,Math.min(560,largestLabel+2*clearance+40)),top=84,rowGap=128,pad=64;
   const xStarts=[pad,pad+colWidths[0]+colGap,pad+colWidths[0]+colGap+colWidths[1]+colGap];
   const rows=Object.fromEntries(columns.map(kind=>[kind,0]));
   for(const node of nodes){
@@ -124,13 +134,13 @@ export function renderDfd(data,styleConfig){
     if(node.kind==='dataStore'){
       // One invisible semantic endpoint spans the documented editable two-line store glyph.
       cells.push(vertex(node._cell,'','shape=rect;fillColor=none;strokeColor=none;opacity=0;',node.x,node.y,node.width,node.height));
-      const lineStyle=`shape=rect;html=1;fillColor=${style.strokeColor};strokeColor=${style.strokeColor};strokeWidth=${style.strokeWidth};`;
+      const lineStyle=styleForRole('node',roleTokens({fontFamily,fillColor:style.strokeColor,strokeColor:style.strokeColor,strokeWidth:style.strokeWidth},fontSize,styleConfig?.presentation,style.strokeColor),'shape=rect;html=1;');
       cells.push(vertex(stableId('dfd_store_top',node.id),'',lineStyle,node.x+8,node.y+20,node.width-16,2));
       cells.push(vertex(stableId('dfd_store_bottom',node.id),'',lineStyle,node.x+8,node.y+node.height-20,node.width-16,2));
-      const labelStyle=`text;html=1;whiteSpace=wrap;align=center;verticalAlign=middle;fontFamily=${fontFamily};fontSize=${fontSize};fillColor=${style.fillColor};strokeColor=none;`;
+      const labelStyle=styleForRole('label',roleTokens({fontFamily,fillColor:style.fillColor,strokeColor:style.strokeColor,strokeWidth:style.strokeWidth},fontSize,styleConfig?.presentation),'text;html=1;whiteSpace=wrap;align=center;verticalAlign=middle;strokeColor=none;');
       cells.push(vertex(stableId('dfd_store_label',node.id),htmlText(node.display),labelStyle,node.x+12,node.y+24,node.width-24,node.height-48));
     }else{
-      const shapeStyle=`shape=${style.shape};whiteSpace=wrap;html=1;fontFamily=${fontFamily};fontSize=${fontSize};fillColor=${style.fillColor};strokeColor=${style.strokeColor};strokeWidth=${style.strokeWidth};rounded=${style.rounded??0};`;
+      const shapeStyle=styleForRole('node',roleTokens({fontFamily,fillColor:style.fillColor,strokeColor:style.strokeColor,strokeWidth:style.strokeWidth},fontSize,styleConfig?.presentation),`shape=${style.shape};whiteSpace=wrap;html=1;rounded=${style.rounded??0};`);
       cells.push(vertex(node._cell,htmlText(node.display),shapeStyle,node.x,node.y,node.width,node.height));
     }
   }
@@ -139,11 +149,11 @@ export function renderDfd(data,styleConfig){
   for(const item of normalized){
     const route=routeById.get(stableId('dfd_flow',item.id));
     if(!route)throw Error(`DFD geometry did not return flow ${item.id}`);
-    const style=`edgeStyle=orthogonalEdgeStyle;rounded=0;jettySize=auto;endArrow=${cfg.arrow};startArrow=none;html=1;whiteSpace=wrap;fontFamily=${fontFamily};fontSize=${fontSize};strokeColor=${cfg.strokeColor};strokeWidth=${cfg.strokeWidth};`;
-    cells.push(edge(stableId('dfd_flow',item.id),item.src._cell,item.dst._cell,style,route));
+    const edgeStyle=styleForRole('edge',roleTokens({fontFamily,fillColor:'#ffffff',strokeColor:cfg.strokeColor,strokeWidth:cfg.strokeWidth},fontSize,styleConfig?.presentation),`edgeStyle=orthogonalEdgeStyle;rounded=0;jettySize=auto;endArrow=${cfg.arrow};startArrow=none;html=1;whiteSpace=wrap;`);
+    cells.push(edge(stableId('dfd_flow',item.id),item.src._cell,item.dst._cell,edgeStyle,route));
     const label=labelSizes.get(item.id);
     if(label){
-      const b=route.label.bounds,textStyle=`text;html=1;whiteSpace=wrap;align=center;verticalAlign=middle;fontFamily=${fontFamily};fontSize=${fontSize};fillColor=#ffffff;strokeColor=none;`;
+      const b=route.label.bounds,textStyle=styleForRole('label',roleTokens({fontFamily,fillColor:'#ffffff',strokeColor:cfg.strokeColor,strokeWidth:cfg.strokeWidth},fontSize,styleConfig?.presentation),'text;html=1;whiteSpace=wrap;align=center;verticalAlign=middle;strokeColor=none;');
       cells.push(vertex(label.id,htmlText(label.display),textStyle,b.x,b.y,b.width,b.height));
     }
   }
