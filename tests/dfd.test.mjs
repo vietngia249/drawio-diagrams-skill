@@ -153,23 +153,85 @@ test('default DFD node and flow text uses a readable 12 point minimum',()=>{
   const fontSizes=[...xml.matchAll(/fontSize=([\d.]+)/g)].map(match=>Number(match[1]));
   assert.ok(fontSizes.length>0);
   assert.ok(fontSizes.every(size=>size>=12),`found undersized DFD text: ${fontSizes.join(', ')}`);
+  assert.match(xml,/strokeColor=#000000/);
+  assert.match(xml,/fillColor=#ffffff/);
+});
+
+test('shared presentation tokens style DFD roles while preserving native notation',()=>{
+  const tokenized=structuredClone(style);
+  Object.assign(tokenized.presentation,{
+    fontFamily:'Verdana',
+    fontSizes:{...tokenized.presentation.fontSizes,body:18,label:16},
+    colors:{...tokenized.presentation.colors,stroke:'#123456',fill:'#eeeeee'},
+    strokeWidth:2,
+    label:{...tokenized.presentation.label,background:'#fff2cc'}
+  });
+  const simple={nodes:[{id:'source',kind:'externalEntity',label:'Source'},{id:'work',kind:'process',label:'Work'},{id:'store',kind:'dataStore',label:'Records'}],flows:[{id:'input',from:'source',to:'work',label:'Source data'},{id:'save',from:'work',to:'store',label:'Saved records'}]};
+  const output=renderDfd(simple,tokenized),process=output.cells.find(cell=>cell.id==='dfd_node_776f726b');
+  const storeTop=output.cells.find(cell=>cell.id==='dfd_store_top_73746f7265');
+  const storeLabel=output.cells.find(cell=>cell.id==='dfd_store_label_73746f7265');
+  const flow=output.cells.find(cell=>cell.kind==='edge');
+  const flowLabel=output.cells.find(cell=>cell.id.startsWith('dfd_flow_label_'));
+  assert.match(process.style,/shape=ellipse/);
+  assert.match(process.style,/fontFamily=Verdana/);
+  assert.match(process.style,/fontSize=18/);
+  assert.match(process.style,/fontColor=#123456/);
+  assert.match(process.style,/strokeColor=#123456/);
+  assert.match(process.style,/fillColor=#eeeeee/);
+  assert.match(process.style,/strokeWidth=2/);
+  assert.match(storeTop.style,/shape=rect/);
+  assert.match(storeTop.style,/fillColor=#123456/);
+  assert.match(storeTop.style,/strokeWidth=2/);
+  assert.match(storeLabel.style,/fontSize=18/);
+  assert.match(storeLabel.style,/fillColor=#fff2cc/);
+  assert.match(storeLabel.style,/fontColor=#123456/);
+  assert.match(flow.style,/fontFamily=Verdana/);
+  assert.match(flow.style,/fontSize=16/);
+  assert.match(flow.style,/strokeColor=#123456/);
+  assert.match(flow.style,/strokeWidth=2/);
+  assert.match(flow.style,/endArrow=block/);
+  assert.match(flow.style,/startArrow=none/);
+  assert.match(flowLabel.style,/fontSize=16/);
+  assert.match(flowLabel.style,/fillColor=#fff2cc/);
+  assert.match(flowLabel.style,/fontColor=#123456/);
+  assert.equal(output.cells.filter(cell=>cell.id.startsWith('dfd_store_')&&cell.id.includes('store')).length,3);
 });
 
 test('shared route-clearance tokens preserve DFD style overrides and notation',()=>{
   const roomy=structuredClone(style);
   roomy.presentation.spacing.routeClearance=40;
+  roomy.presentation.fontFamily='Verdana';
+  roomy.presentation.fontSizes={...roomy.presentation.fontSizes,body:18,label:16};
+  roomy.presentation.colors={...roomy.presentation.colors,stroke:'#abcdef',fill:'#dddddd'};
+  roomy.presentation.strokeWidth=2;
+  roomy.dfd.fontFamily='Georgia';
+  roomy.dfd.fontSize=13;
   roomy.dfd.process.fillColor='#eeeeee';
   roomy.dfd.process.strokeColor='#123456';
+  roomy.dfd.process.strokeWidth=3;
+  roomy.dfd.dataStore.fillColor='#f0f0f0';
+  roomy.dfd.dataStore.strokeColor='#222222';
+  roomy.dfd.dataStore.strokeWidth=5;
+  roomy.dfd.dataFlow.strokeColor='#654321';
+  roomy.dfd.dataFlow.strokeWidth=4;
   roomy.dfd.dataFlow.arrow='open';
-  const simple={nodes:[{id:'source',kind:'externalEntity',label:'Source'},{id:'work',kind:'process',label:'Work'}],flows:[{id:'input',from:'source',to:'work'}]};
+  const simple={nodes:[{id:'source',kind:'externalEntity',label:'Source'},{id:'work',kind:'process',label:'Work'},{id:'store',kind:'dataStore',label:'Records'}],flows:[{id:'input',from:'source',to:'work'},{id:'save',from:'work',to:'store'}]};
   const baseline=renderDfd(simple,style),adjusted=renderDfd(simple,roomy);
   const baselineProcess=baseline.cells.find(cell=>cell.kind==='vertex'&&cell.style.includes('shape=ellipse'));
   const process=adjusted.cells.find(cell=>cell.kind==='vertex'&&cell.style.includes('shape=ellipse'));
   assert.notEqual(process.geometry.x,baselineProcess.geometry.x,'larger shared route clearance should widen the inter-column gap');
   assert.match(process.style,/shape=ellipse/);
+  assert.match(process.style,/fontFamily=Georgia/);
+  assert.match(process.style,/fontSize=13/);
   assert.match(process.style,/fillColor=#eeeeee/);
   assert.match(process.style,/strokeColor=#123456/);
+  assert.match(process.style,/strokeWidth=3/);
+  const storeTop=adjusted.cells.find(cell=>cell.id==='dfd_store_top_73746f7265');
+  const storeLabel=adjusted.cells.find(cell=>cell.id==='dfd_store_label_73746f7265');
+  assert.match(storeTop.style,/fillColor=#222222/);
+  assert.match(storeTop.style,/strokeWidth=5/);
+  assert.match(storeLabel.style,/fillColor=#f0f0f0/);
   const flows=adjusted.cells.filter(cell=>cell.kind==='edge');
   assert.ok(flows.length>0);
-  assert.ok(flows.every(cell=>cell.style.includes('endArrow=open;')&&cell.style.includes('startArrow=none;')));
+  assert.ok(flows.every(cell=>cell.style.includes('fontFamily=Georgia;')&&cell.style.includes('fontSize=13;')&&cell.style.includes('strokeColor=#654321;')&&cell.style.includes('strokeWidth=4;')&&cell.style.includes('endArrow=open;')&&cell.style.includes('startArrow=none;')));
 });
