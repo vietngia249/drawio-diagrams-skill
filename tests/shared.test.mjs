@@ -103,7 +103,7 @@ test('compressed multipage files require and honor explicit page selection', () 
 test('output path protection resolves identical paths', () => assert.throws(() => assertSafeOutput(validFixture, path.join(fixtureRoot, '.', 'generic-valid.json')), e => e.diagnostics[0].code === 'OUTPUT_OVERWRITE'));
 test('outputs are refused inside the reference checkout', () => assert.throws(() => assertOutsideReferenceTree(path.join(root, 'work/drawio-references/untrusted/output.drawio'), root), e => e.diagnostics[0].code === 'REFERENCE_TREE_WRITE'));
 test('edge waypoint API remains additive and text width is deterministic', () => {
-  assert.match(edge('e', 'a', 'b', '', 'edge', '1', { points: [{ x: 8, y: 12 }] }), /<Array as="points"><mxPoint x="8" y="12" as="points"\/><\/Array>/);
+  assert.match(edge('e', 'a', 'b', '', 'edge', '1', { points: [{ x: 8, y: 12 }] }), /<Array as="points"><mxPoint x="8" y="12"\/><\/Array>/);
   assert.equal(textWidth('abc', 10), 18);
 });
 test('render CLI produces structurally valid generic output', () => {
