@@ -40,6 +40,18 @@ test('sequence round-trips Unicode participant labels and XML-sensitive text thr
   assert.equal(participant.attrs.value.replaceAll('<br>', ' '), htmlText(data.participants[0].label).replaceAll('<br>', ' '));
 });
 
+test('corrected UTF-8 JSON participant and message text survive XML serialization unchanged', () => {
+  const data = fitTrack(), cells = renderModel(data);
+  const participant = cells.find(cell => cell.attrs.id === 'participant_header_0');
+  const message = cells.find(cell => cell.attrs.id === 'message_label_0');
+  assert.equal(participant.attrs.value.replaceAll('<br>', ' '), htmlText(data.participants[0].label).replaceAll('<br>', ' '));
+  assert.equal(message.attrs.value.replaceAll('<br>', ' '), htmlText(data.messages[0].label).replaceAll('<br>', ' '));
+  assert.ok(participant.attrs.value.includes('Giao diện'));
+  assert.ok(message.attrs.value.includes('thời lượng'));
+  assert.doesNotMatch(`${participant.attrs.value} ${message.attrs.value}`, /(?:Ã|á»|Â)/u,
+    'valid UTF-8 input must not contain the known mojibake sequences');
+});
+
 test('participant header wraps long Unicode titles and grows beyond its minimum height', () => {
   const data = { type: 'sequence', participants: [
     { id: 'ui', label: 'Giao diện người dùng có tên dài vượt quá vùng tiêu đề chuẩn\nActiveWorkoutSession' },
@@ -184,8 +196,12 @@ test('planned sequence geometry is the geometry preserved by draw.io export seri
   fs.writeFileSync(input, JSON.stringify(data), 'utf8');
   const run = spawnSync(process.execPath, ['scripts/render_drawio.mjs', input, '-o', output], { cwd: root, encoding: 'utf8' });
   assert.equal(run.status, 0, run.stderr);
+  const outputXml = fs.readFileSync(output, 'utf8');
+  assert.ok(outputXml.includes('Giao diện'), 'CLI XML must preserve UTF-8 participant text from the JSON input');
+  assert.ok(outputXml.includes('thời lượng'), 'CLI XML must preserve UTF-8 message text from the JSON input');
+  assert.doesNotMatch(outputXml, /(?:Ã|á»|Â)/u, 'CLI output must not convert correct Unicode into mojibake');
   const planned = byId(parseCells(docXml(data.title, plannedCells, data.page)));
-  const exported = byId(parseCells(fs.readFileSync(output, 'utf8')));
+  const exported = byId(parseCells(outputXml));
   assert.deepEqual([...exported.keys()].sort(), [...planned.keys()].sort());
   for (const [id, cell] of planned) {
     assert.deepEqual(exported.get(id).geometry, cell.geometry, `export changed planned geometry for ${id}`);
