@@ -1,0 +1,21 @@
+{
+  "type": "dfd",
+  "title": "Ghi nhận và hoàn tất buổi tập — Logical Level 1",
+  "level": 1,
+  "perspective": "logical",
+  "nodes": [
+    { "id": "athlete", "kind": "externalEntity", "label": "Vận động viên" },
+    { "id": "track", "kind": "process", "label": "1. Ghi nhận tiến trình buổi tập" },
+    { "id": "complete", "kind": "process", "label": "2. Hoàn tất và tổng hợp buổi tập" },
+    { "id": "plans", "kind": "dataStore", "label": "D1 Kế hoạch tập" },
+    { "id": "sessions", "kind": "dataStore", "label": "D2 Buổi tập và các hiệp" }
+  ],
+  "flows": [
+    { "id": "workout-input", "from": "athlete", "to": "track", "label": "Lựa chọn bài tập, tải trọng, số lần và mức gắng sức" },
+    { "id": "plan-details", "from": "plans", "to": "track", "label": "Bài tập và mục tiêu của kế hoạch" },
+    { "id": "session-progress", "from": "track", "to": "sessions", "label": "Tiến trình buổi tập và các hiệp đã ghi nhận" },
+    { "id": "completed-workout", "from": "sessions", "to": "complete", "label": "Buổi tập và các hiệp đã ghi nhận" },
+    { "id": "completion-summary", "from": "complete", "to": "sessions", "label": "Thời lượng, trạng thái và tổng khối lượng" },
+    { "id": "workout-result", "from": "complete", "to": "athlete", "label": "Kết quả buổi tập đã hoàn tất" }
+  ]
+}

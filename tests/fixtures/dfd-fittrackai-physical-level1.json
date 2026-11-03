@@ -1,0 +1,23 @@
+{
+  "type": "dfd",
+  "title": "Workout tracking and completion — Physical Level 1",
+  "level": 1,
+  "perspective": "physical",
+  "nodes": [
+    { "id": "athlete", "kind": "externalEntity", "label": "Athlete" },
+    { "id": "client", "kind": "process", "label": "1. Track workout in client" },
+    { "id": "completion", "kind": "process", "label": "2. Complete session in service" },
+    { "id": "local", "kind": "dataStore", "label": "D1 Client active-session state" },
+    { "id": "postgres", "kind": "dataStore", "label": "D2 PostgreSQL workout records" }
+  ],
+  "flows": [
+    { "id": "athlete-input", "from": "athlete", "to": "client", "label": "Exercise choices and set details" },
+    { "id": "state-save", "from": "client", "to": "local", "label": "Active workout and recorded sets" },
+    { "id": "state-restore", "from": "local", "to": "client", "label": "Saved active workout" },
+    { "id": "completion-payload", "from": "client", "to": "completion", "label": "Session duration and exercise-set details" },
+    { "id": "session-read", "from": "postgres", "to": "completion", "label": "Owned session and stored sets" },
+    { "id": "session-update", "from": "completion", "to": "postgres", "label": "Updated sets, completion status, duration and total volume" },
+    { "id": "completion-result", "from": "completion", "to": "client", "label": "Completed workout summary" },
+    { "id": "athlete-result", "from": "client", "to": "athlete", "label": "Completed workout summary" }
+  ]
+}
