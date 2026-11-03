@@ -99,13 +99,19 @@ export function renderSequence(data, styleConfig = {}) {
   const fontSize = numberOr(sequenceStyle.fontSize, 16), messageFontSize = numberOr(messageStyle.fontSize, fontSize);
   const guardFontSize = numberOr(fragmentStyle.guardFontSize, 14);
   const headerWrapChars = Math.max(14, Math.floor((260 - 24) / (fontSize * 0.58)));
-  const participantMetrics = labels.map(label => {
+  const participantShapes = participants.map(participant => typeof participant === 'string'
+    ? participantStyle.shape || 'umlLifeline'
+    : participant.shape || participantStyle.shape || 'umlLifeline');
+  const participantMetrics = labels.map((label, index) => {
     const raw = String(label ?? '');
     const width = clamp(Math.ceil(textWidth(raw, fontSize) + 30), 130, 260);
     const maxChars = headerWrapChars;
     const display = wrapText(raw, maxChars), lines = lineCount(display);
-    const height = Math.max(52, Math.ceil(lines * fontSize * 1.35 + 16));
-    return { width, height, display };
+    const labelHeight = Math.max(20, Math.ceil(lines * fontSize * 1.35 + 8));
+    const height = participantShapes[index] === 'umlActor'
+      ? 72 + 6 + labelHeight
+      : Math.max(52, labelHeight);
+    return { width, height, display, labelHeight, shape: participantShapes[index] };
   });
 
   const messageRecords = [];
@@ -303,9 +309,16 @@ export function renderSequence(data, styleConfig = {}) {
   participants.forEach((participant, index) => {
     const metric = participantMetrics[index], x = centers[index] - metric.width / 2;
     model.push(vertex(`participant_${index}`, '', `sequenceRole=umlLifeline;dashed=1;strokeColor=${participantStyle.strokeColor || '#999999'};strokeWidth=${participantStyle.strokeWidth || 1};`, centers[index] - 0.5, lineTop, 1, lineHeight));
-    model.push(vertex(`participant_header_${index}`, htmlText(metric.display),
-      `rounded=${participantStyle.rounded ?? 0};html=1;whiteSpace=wrap;fontSize=${fontSize};shape=${participantStyle.shape || 'umlLifeline'};fillColor=${participantStyle.fillColor || 'none'};strokeColor=${participantStyle.strokeColor || '#999999'};strokeWidth=${participantStyle.strokeWidth || 1};`,
-      x, headerTop, metric.width, metric.height));
+    if (metric.shape === 'umlActor') {
+      model.push(vertex(`participant_header_${index}`, '', 'shape=umlActor;html=1;fillColor=#ffffff;strokeColor=#000000;strokeWidth=1;', centers[index] - 32, headerTop, 64, 72));
+      model.push(vertex(`participant_label_${index}`, htmlText(metric.display),
+        `text;html=1;whiteSpace=wrap;align=center;verticalAlign=middle;fillColor=none;strokeColor=none;fontSize=${fontSize};`,
+        x, headerTop + 78, metric.width, metric.labelHeight));
+    } else {
+      model.push(vertex(`participant_header_${index}`, htmlText(metric.display),
+        `rounded=${participantStyle.rounded ?? 0};html=1;whiteSpace=wrap;fontSize=${fontSize};shape=${metric.shape};fillColor=${participantStyle.fillColor || 'none'};strokeColor=${participantStyle.strokeColor || '#999999'};strokeWidth=${participantStyle.strokeWidth || 1};`,
+        x, headerTop, metric.width, metric.height));
+    }
   });
 
   const messagesByOrder = new Map();

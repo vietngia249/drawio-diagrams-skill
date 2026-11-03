@@ -1,14 +1,16 @@
 {
   "type": "sequence",
   "title": "Hoàn tất buổi tập và lưu các hiệp",
-  "page": { "width": 2400, "height": 1900 },
+  "page": { "width": 3000, "height": 1900 },
   "participants": [
+    { "id": "athlete", "label": "Athlete\nVận động viên (đã xác thực)", "shape": "umlActor" },
     { "id": "ui", "label": "Giao diện\nActiveWorkoutSession" },
     { "id": "api", "label": "API Fastify\ncontroller/routes" },
     { "id": "svc", "label": "WorkoutsService" },
     { "id": "db", "label": "Prisma / PostgreSQL" }
   ],
   "messages": [
+    { "kind": "sync", "order": 0, "label": "Tap Save & Complete", "from": "athlete", "to": "ui" },
     { "kind": "sync", "order": 1, "label": "POST /api/v1/workouts/sessions/{id}/complete\nBearer token; thời lượng; danh sách bài tập và hiệp", "from": "ui", "to": "api" },
     { "kind": "sync", "order": 2, "label": "completeSession(userId từ token, sessionId, input hợp lệ)", "from": "api", "to": "svc" },
     { "kind": "sync", "order": 3, "label": "Tìm session theo id và userId; đọc các bài tập và hiệp", "from": "svc", "to": "db" },
@@ -24,7 +26,7 @@
   ],
   "fragments": [],
   "activations": [
-    { "participant": "ui", "startOrder": 1, "startEnd": "source", "endOrder": 12, "endEnd": "target" },
+    { "participant": "ui", "startOrder": 0, "startEnd": "target", "endOrder": 12, "endEnd": "target" },
     { "participant": "api", "startOrder": 1, "startEnd": "target", "endOrder": 12, "endEnd": "source" },
     { "participant": "svc", "startOrder": 2, "startEnd": "target", "endOrder": 11, "endEnd": "source" },
     { "participant": "db", "startOrder": 3, "startEnd": "target", "endOrder": 4, "endEnd": "source" },

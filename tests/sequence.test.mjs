@@ -31,21 +31,23 @@ const fitTrack = () => fixture('fittrackai-utf8.json');
 
 test('sequence round-trips Unicode participant labels and XML-sensitive text through draw.io XML', () => {
   const data = fitTrack();
-  data.participants[0].label = 'Giao diện <người tập> & ActiveWorkoutSession';
+  const ui = data.participants.find(participant => participant.id === 'ui');
+  ui.label = 'Giao diện <người tập> & ActiveWorkoutSession';
   const cells = renderModel(data);
-  const participant = cells.find(cell => cell.attrs.id === 'participant_header_0');
+  const participant = cells.find(cell => cell.attrs.id === 'participant_header_1');
   assert.ok(participant.attrs.value.includes('diện'));
   assert.ok(participant.attrs.value.includes('&lt;người tập&gt;'));
   assert.ok(participant.attrs.value.includes('&amp;'));
-  assert.equal(participant.attrs.value.replaceAll('<br>', ' '), htmlText(data.participants[0].label).replaceAll('<br>', ' '));
+  assert.equal(participant.attrs.value.replaceAll('<br>', ' '), htmlText(ui.label).replaceAll('<br>', ' '));
 });
 
 test('corrected UTF-8 JSON participant and message text survive XML serialization unchanged', () => {
   const data = fitTrack(), cells = renderModel(data);
-  const participant = cells.find(cell => cell.attrs.id === 'participant_header_0');
-  const message = cells.find(cell => cell.attrs.id === 'message_label_0');
-  assert.equal(participant.attrs.value.replaceAll('<br>', ' '), htmlText(data.participants[0].label).replaceAll('<br>', ' '));
-  assert.equal(message.attrs.value.replaceAll('<br>', ' '), htmlText(data.messages[0].label).replaceAll('<br>', ' '));
+  const ui = data.participants.find(participant => participant.id === 'ui');
+  const participant = cells.find(cell => cell.attrs.id === 'participant_header_1');
+  const message = cells.find(cell => cell.attrs.id === 'message_label_1');
+  assert.equal(participant.attrs.value.replaceAll('<br>', ' '), htmlText(ui.label).replaceAll('<br>', ' '));
+  assert.equal(message.attrs.value.replaceAll('<br>', ' '), htmlText(data.messages[1].label).replaceAll('<br>', ' '));
   assert.ok(participant.attrs.value.includes('Giao diện'));
   assert.ok(message.attrs.value.includes('thời lượng'));
   assert.doesNotMatch(`${participant.attrs.value} ${message.attrs.value}`, /(?:Ã|á»|Â)/u,
@@ -76,14 +78,18 @@ test('long sequence message labels have bounds for their wrapped lines', () => {
 test('participants use the native UML lifeline shape and have visible lifeline stems', () => {
   const cells = renderModel(fitTrack());
   const participants = cells.filter(cell => /^participant_header_\d+$/.test(cell.attrs.id));
-  assert.equal(participants.length, 4);
-  for (const participant of participants) assert.match(participant.attrs.style, /(?:^|;)shape=umlLifeline(?:;|$)/);
-  for (let index = 0; index < 4; index++) assert.ok(cells.some(cell => cell.attrs.id === `participant_${index}` && /dashed=1/.test(cell.attrs.style)), `participant ${index} should be a semantic lifeline endpoint`);
+  assert.equal(participants.length, 5);
+  assert.match(participants[0].attrs.style, /(?:^|;)shape=umlActor(?:;|$)/, 'the athlete uses the installed native UML actor stencil');
+  assert.ok(cells.find(cell => cell.attrs.id === 'participant_label_0')?.attrs.value.includes('Vận động viên'), 'actor label is a separate text cell');
+  for (const participant of participants.slice(1)) assert.match(participant.attrs.style, /(?:^|;)shape=umlLifeline(?:;|$)/);
+  for (let index = 0; index < 5; index++) assert.ok(cells.some(cell => cell.attrs.id === `participant_${index}` && /dashed=1/.test(cell.attrs.style)), `participant ${index} should be a semantic lifeline endpoint`);
 });
 
 test('FitTrackAI example documents only the source-backed successful completion scenario', () => {
   const example = JSON.parse(fs.readFileSync(path.join(root, 'examples/sequence.json'), 'utf8'));
-  assert.deepEqual(example.participants.map(participant => participant.id), ['ui', 'api', 'svc', 'db']);
+  assert.deepEqual(example.participants.map(participant => participant.id), ['athlete', 'ui', 'api', 'svc', 'db']);
+  assert.equal(example.participants[0].shape, 'umlActor');
+  assert.deepEqual(example.messages[0], { kind: 'sync', order: 0, label: 'Tap Save & Complete', from: 'athlete', to: 'ui' });
   assert.equal(example.fragments.length, 0, 'the referenced sequence is a single successful path, not a conditional fragment');
   assert.ok(example.messages.every(message => ['sync', 'return'].includes(message.kind)));
   assert.ok(example.messages.some(message => message.label.startsWith('200 JSON')));
@@ -115,6 +121,15 @@ test('source-backed synchronous completion spans render as editable activation b
 test('activation bars are omitted when synchronous lifetime evidence is absent', () => {
   const cells = renderModel({ type: 'sequence', participants: ['A', 'B'], messages: [{ from: 'A', to: 'B', kind: 'sync', label: 'call' }] });
   assert.equal(cells.filter(cell => /^activation_/.test(cell.attrs.id)).length, 0);
+});
+
+test('the athlete finish trigger connects the native actor to the active-session lifeline', () => {
+  const data = fitTrack(), cells = renderModel(data), trigger = cells.find(cell => cell.attrs.id === 'message_0');
+  assert.equal(trigger.attrs.source, 'participant_0');
+  assert.equal(trigger.attrs.target, 'participant_1');
+  assert.ok(cells.find(cell => cell.attrs.id === 'message_label_0').attrs.value.includes('Tap Save &amp; Complete'));
+  const uiActivation = cells.find(cell => cell.attrs.id === 'activation_0');
+  assert.ok(uiActivation, 'UI execution begins when it receives the finish-button event');
 });
 
 test('self-call route has orthogonal clearance and its label is a separately associated cell', () => {
@@ -213,7 +228,8 @@ test('source-input corruption is distinct from renderer Unicode preservation', (
   const corrupted = fixture('fittrackai-source-corrupted.json');
   const corrected = fixture('fittrackai-utf8.json');
   assert.equal(corrupted.participants[0].label.split('\n')[0], 'Giao di?n', 'source fixture records the literal question mark already present upstream');
-  assert.equal(corrected.participants[0].label.split('\n')[0], 'Giao diện');
-  const participant = renderModel(corrected).find(cell => cell.attrs.id === 'participant_header_0');
+  const ui = corrected.participants.find(participant => participant.id === 'ui');
+  assert.equal(ui.label.split('\n')[0], 'Giao diện');
+  const participant = renderModel(corrected).find(cell => cell.attrs.id === 'participant_header_1');
   assert.equal(participant.attrs.value, 'Giao diện<br>ActiveWorkoutSession');
 });
