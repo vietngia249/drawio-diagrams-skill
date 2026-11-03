@@ -131,6 +131,49 @@ test('minimum route gap reports an infeasible shared endpoint port group in plan
   assert.equal(result.routes.length, 0, 'edges with infeasible endpoint ports must not return invalid routes');
 });
 
+test('nonblocking helper anchors remain valid endpoints for globally spaced routes', () => {
+  const anchors = [
+    { id: 'source-one', kind: 'helper', blocksRoute: false, bounds: { x: 80, y: 100, width: 0, height: 0 } },
+    { id: 'target-one', kind: 'helper', blocksRoute: false, bounds: { x: 320, y: 100, width: 0, height: 0 } },
+    { id: 'source-two', kind: 'helper', blocksRoute: false, bounds: { x: 80, y: 110, width: 0, height: 0 } },
+    { id: 'target-two', kind: 'helper', blocksRoute: false, bounds: { x: 320, y: 110, width: 0, height: 0 } }
+  ];
+  const edges = [
+    { id: 'route-one', source: { nodeId: 'source-one', port: { side: 'east' } }, target: { nodeId: 'target-one', port: { side: 'west' } } },
+    { id: 'route-two', source: { nodeId: 'source-two', port: { side: 'east' } }, target: { nodeId: 'target-two', port: { side: 'west' } } }
+  ];
+  const result = routeOrthogonalEdges({ obstacles: anchors, edges, page: { width: 400, height: 220 }, clearance: 4, minimumRouteGap: 5 });
+  assert.equal(result.diagnostics.filter(d => d.phase === 'planned' && d.severity === 'error').length, 0);
+  assert.equal(result.routes.length, 2);
+  for (const route of result.routes) {
+    const edge = edges.find(item => item.id === route.edgeId), points = [route.sourcePort.point, ...route.points, route.targetPort.point];
+    assert.equal(route.sourcePort.nodeId, edge.source.nodeId);
+    assert.equal(route.targetPort.nodeId, edge.target.nodeId);
+    const sourceBounds = anchors.find(item => item.id === edge.source.nodeId).bounds;
+    assert.deepEqual(route.sourcePort.point, { x: sourceBounds.x, y: sourceBounds.y });
+    for (let i = 1; i < points.length; i++) assert.ok(points[i].x === points[i - 1].x || points[i].y === points[i - 1].y, `${route.edgeId} must remain orthogonal`);
+  }
+  const allSegments = result.routes.flatMap(route => segments(route).map(([a, b]) => ({ edgeId: route.edgeId, a, b })));
+  for (let i = 0; i < allSegments.length; i++) for (let j = i + 1; j < allSegments.length; j++) {
+    const first = allSegments[i], second = allSegments[j], gap = overlappingParallelGap(first.a, first.b, second.a, second.b);
+    if (gap !== undefined) assert.ok(gap >= 5, `${first.edgeId} and ${second.edgeId} must preserve the minimum route gap`);
+  }
+});
+
+test('route obstacles remain blocking by default, including zero-size helper anchors', () => {
+  const anchors = [
+    { id: 'source-one', kind: 'helper', bounds: { x: 80, y: 100, width: 0, height: 0 } },
+    { id: 'target-one', kind: 'helper', bounds: { x: 320, y: 100, width: 0, height: 0 } },
+    { id: 'source-two', kind: 'helper', bounds: { x: 80, y: 103, width: 0, height: 0 } },
+    { id: 'target-two', kind: 'helper', bounds: { x: 320, y: 103, width: 0, height: 0 } }
+  ];
+  const result = routeOrthogonalEdges({ obstacles: anchors, edges: [
+    { id: 'route-one', source: { nodeId: 'source-one', port: { side: 'east' } }, target: { nodeId: 'target-one', port: { side: 'west' } } },
+    { id: 'route-two', source: { nodeId: 'source-two', port: { side: 'east' } }, target: { nodeId: 'target-two', port: { side: 'west' } } }
+  ], page: { width: 400, height: 220 }, clearance: 4 });
+  assert.ok(result.diagnostics.some(d => d.phase === 'planned' && d.severity === 'error' && d.code === 'ROUTE_ENDPOINT_BLOCKED'));
+});
+
 test('parallel edge labels receive separate obstacle-free bounds', () => {
   const result = routeOrthogonalEdges({ obstacles: nodes, edges: [
     edge('ab-one', 'A', 'B', { id: 'label-one', width: 90, height: 30 }),

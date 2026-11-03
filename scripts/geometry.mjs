@@ -91,7 +91,7 @@ function allocatePorts(edges, obstacles, minimumRouteGap = 0) {
         let previous = -Infinity;
         desired.forEach(({ request, offset: requested }, index) => {
           const lower = index * spacing, upper = 1 - (group.length - 1 - index) * spacing;
-          const offset = Math.max(previous + spacing, Math.min(upper, Math.max(lower, requested)));
+          const offset = group.length === 1 ? requested : Math.max(previous + spacing, Math.min(upper, Math.max(lower, requested)));
           previous = offset;
           const b = request.node.bounds;
           const point = request.side === 'east' ? { x: b.x + b.width, y: b.y + b.height * offset }
@@ -144,7 +144,7 @@ function portEscape(port, obstacle, clearance) {
 }
 
 function routeOne(start, goal, obstacles, excluded, occupied, page, clearance, minimumRouteGap = 0) {
-  const expanded = obstacles.filter(o => !excluded.has(o.id)).map(o => ({ id: o.id, bounds: expand(o.bounds, clearance) }));
+  const expanded = obstacles.filter(o => o.blocksRoute !== false && !excluded.has(o.id)).map(o => ({ id: o.id, bounds: expand(o.bounds, clearance) }));
   const xs = new Set([start.x, goal.x, 0, page.width]), ys = new Set([start.y, goal.y, 0, page.height]);
   for (const o of expanded) {
     const b = o.bounds;
@@ -213,7 +213,7 @@ function labelPlacement(label, points, obstacles, page, clearance, occupied) {
       const center = horizontal ? { x: mid.x, y: mid.y + sign * (height / 2 + clearance + 4) } : { x: mid.x + sign * (width / 2 + clearance + 4), y: mid.y };
       const rect = { x: center.x - width / 2, y: center.y - height / 2, width, height };
       if (rect.x < 0 || rect.y < 0 || rect.x + width > page.width || rect.y + height > page.height) continue;
-      if (obstacles.some(o => crossesRect(rect, o.bounds, clearance))) continue;
+      if (obstacles.some(o => o.blocksRoute !== false && crossesRect(rect, o.bounds, clearance))) continue;
       if (points.slice(1).some((p, index) => index !== i - 1 && crossesRect(rect, { x: Math.min(points[index].x, p.x), y: Math.min(points[index].y, p.y), width: Math.abs(points[index].x - p.x) || 0.01, height: Math.abs(points[index].y - p.y) || 0.01 }, 1))) continue;
       if (occupied.some(([a, b]) => crossesRect(rect, { x: Math.min(a.x, b.x), y: Math.min(a.y, b.y), width: Math.abs(a.x - b.x) || 0.01, height: Math.abs(a.y - b.y) || 0.01 }, 1))) continue;
       return { id: label.id, bounds: rect, segmentIndex: i - 1, position: 'center' };
@@ -233,6 +233,7 @@ export function routeOrthogonalEdges({ obstacles: rawObstacles = [], edges: rawE
   if (!Number.isFinite(minimumRouteGap) || minimumRouteGap < 0) throw new TypeError('minimumRouteGap must be a finite nonnegative number');
   const obstacles = rawObstacles.map((o, i) => {
     if (!o || typeof o.id !== 'string' || !o.id || !['node', 'label', 'container', 'helper'].includes(o.kind)) throw new TypeError(`obstacles[${i}] requires id and supported kind`);
+    if (o.blocksRoute !== undefined && typeof o.blocksRoute !== 'boolean') throw new TypeError(`obstacles[${i}].blocksRoute must be a boolean when provided`);
     return { ...o, bounds: boundsOf(o, `obstacles[${i}]`) };
   });
   const page = { width: num(rawPage?.width), height: num(rawPage?.height) };
@@ -252,7 +253,7 @@ export function routeOrthogonalEdges({ obstacles: rawObstacles = [], edges: rawE
       diagnostics.push(diagnostic('error', 'ROUTE_BOUNDS', `edges.${edge.id}`, 'Endpoint clearance extends beyond the page bounds', { start, goal })); continue;
     }
     const endpointIds = new Set([sourcePort.nodeId, targetPort.nodeId]);
-    const blockedStub = [[sourcePort.point, start], [goal, targetPort.point]].some(([a, b]) => allocatedObstacles.some(o => !endpointIds.has(o.id) && crosses(a, b, expand(o.bounds, clearance))));
+    const blockedStub = [[sourcePort.point, start], [goal, targetPort.point]].some(([a, b]) => allocatedObstacles.some(o => o.blocksRoute !== false && !endpointIds.has(o.id) && crosses(a, b, expand(o.bounds, clearance))));
     if (blockedStub) { diagnostics.push(diagnostic('error', 'ROUTE_ENDPOINT_BLOCKED', `edges.${edge.id}`, 'Endpoint clearance cannot leave or reach its node without crossing another obstacle')); continue; }
     const endpointStubs = [[sourcePort.point, start], [goal, targetPort.point]];
     const stubGapConflict = minimumRouteGap > 0 && endpointStubs.some(([a, b]) => occupied.some(([p, q]) => {
