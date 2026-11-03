@@ -15,10 +15,10 @@ This document describes the shared router and serializer contract, plus the curr
 `scripts/geometry.mjs` exports:
 
 ```js
-routeOrthogonalEdges({ obstacles, edges, page, clearance })
+routeOrthogonalEdges({ obstacles, edges, page, clearance, minimumRouteGap })
 ```
 
-An obstacle is `{ id, kind: 'node'|'label'|'container'|'helper', bounds, ownerId? }` in page coordinates. Each edge request has a unique `id`, `source` and `target` endpoint objects `{ nodeId, port?: { side, preferredOffset? } }`, and optionally a `label: { id, width, height }`. `preferredOffset` is normalized to `[0,1]`; the default preference is the side midpoint. The result is `{ routes, diagnostics, page }`. Each returned route is `{ edgeId, sourcePort, targetPort, points, bounds, label? }`; `points` are page-space bends between port points, `bounds` includes endpoints and bends, and an allocated label contains `{ id, bounds, segmentIndex, position }`.
+An obstacle is `{ id, kind: 'node'|'label'|'container'|'helper', bounds, ownerId? }` in page coordinates. Each edge request has a unique `id`, `source` and `target` endpoint objects `{ nodeId, port?: { side, preferredOffset? } }`, and optionally a `label: { id, width, height }`. `preferredOffset` is normalized to `[0,1]`; the default preference is the side midpoint. Optional `minimumRouteGap` is a nonnegative page-unit **centerline separation** between overlapping positive-length parallel segments of distinct routes, including endpoint approach segments. It defaults to `0` for compatibility; zero-length, point-only contact does not require a gap. For a desired visible whitespace of 4 units and a 1-unit stroke, callers should request a centerline gap of 5 units (or, generally, stroke width plus desired visible whitespace). Ports on a shared node side are allocated at the same minimum separation where the side dimensions permit; otherwise routing returns a planned `ROUTE_GAP_UNAVAILABLE` error and omits affected routes. The same planned error is returned when no obstacle-free route can preserve the requested gap. The result is `{ routes, diagnostics, page }`. Each returned route is `{ edgeId, sourcePort, targetPort, points, bounds, label? }`; `points` are page-space bends between port points, `bounds` includes endpoints and bends, and an allocated label contains `{ id, bounds, segmentIndex, position }`.
 
 The typed cell model accepted by `serializeCells(cells)` in `scripts/common.mjs` is:
 
