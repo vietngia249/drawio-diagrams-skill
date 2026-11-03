@@ -154,3 +154,22 @@ test('default DFD node and flow text uses a readable 12 point minimum',()=>{
   assert.ok(fontSizes.length>0);
   assert.ok(fontSizes.every(size=>size>=12),`found undersized DFD text: ${fontSizes.join(', ')}`);
 });
+
+test('shared route-clearance tokens preserve DFD style overrides and notation',()=>{
+  const roomy=structuredClone(style);
+  roomy.presentation.spacing.routeClearance=40;
+  roomy.dfd.process.fillColor='#eeeeee';
+  roomy.dfd.process.strokeColor='#123456';
+  roomy.dfd.dataFlow.arrow='open';
+  const simple={nodes:[{id:'source',kind:'externalEntity',label:'Source'},{id:'work',kind:'process',label:'Work'}],flows:[{id:'input',from:'source',to:'work'}]};
+  const baseline=renderDfd(simple,style),adjusted=renderDfd(simple,roomy);
+  const baselineProcess=baseline.cells.find(cell=>cell.kind==='vertex'&&cell.style.includes('shape=ellipse'));
+  const process=adjusted.cells.find(cell=>cell.kind==='vertex'&&cell.style.includes('shape=ellipse'));
+  assert.notEqual(process.geometry.x,baselineProcess.geometry.x,'larger shared route clearance should widen the inter-column gap');
+  assert.match(process.style,/shape=ellipse/);
+  assert.match(process.style,/fillColor=#eeeeee/);
+  assert.match(process.style,/strokeColor=#123456/);
+  const flows=adjusted.cells.filter(cell=>cell.kind==='edge');
+  assert.ok(flows.length>0);
+  assert.ok(flows.every(cell=>cell.style.includes('endArrow=open;')&&cell.style.includes('startArrow=none;')));
+});
