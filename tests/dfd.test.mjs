@@ -5,6 +5,7 @@ import {renderDfd} from '../scripts/dfd.mjs';
 
 const style=JSON.parse(readFileSync(new URL('../scripts/style.json',import.meta.url),'utf8'));
 const model=JSON.parse(readFileSync(new URL('./fixtures/dfd-fittrackai-logical-level1.json',import.meta.url),'utf8'));
+const physical=JSON.parse(readFileSync(new URL('./fixtures/dfd-fittrackai-physical-level1.json',import.meta.url),'utf8'));
 const render=(data=model)=>renderDfd(data,style).join('\n');
 const cells=xml=>[...xml.matchAll(/<mxCell\b[\s\S]*?<\/mxCell>/g)].map(match=>match[0]);
 const attr=(cell,name)=>cell.match(new RegExp(`\\b${name}="([^"]*)"`))?.[1]??'';
@@ -36,6 +37,20 @@ test('each Level 1 process has source-evidenced meaningful inputs and outputs',(
   }
   assert.deepEqual(model.nodes.filter(n=>n.kind==='dataStore').map(n=>n.id),['plans','sessions']);
   assert.ok(!model.nodes.some(n=>/localStorage|postgres|api|database|http/i.test(n.label)), 'logical perspective does not depict implementation endpoints');
+});
+
+test('physical perspective keeps client active-session state separate from PostgreSQL records',()=>{
+  assert.equal(physical.level,1);
+  assert.equal(physical.perspective,'physical');
+  const stores=physical.nodes.filter(n=>n.kind==='dataStore');
+  assert.deepEqual(stores.map(n=>n.id),['local','postgres']);
+  assert.match(stores[0].label,/client active-session state/i);
+  assert.match(stores[1].label,/postgresql workout records/i);
+  assert.ok(physical.flows.some(f=>f.from==='client'&&f.to==='local'));
+  assert.ok(physical.flows.some(f=>f.from==='local'&&f.to==='client'));
+  assert.ok(physical.flows.some(f=>f.from==='postgres'&&f.to==='completion'));
+  assert.ok(physical.flows.some(f=>f.from==='completion'&&f.to==='postgres'));
+  for(const flow of physical.flows)assert.doesNotMatch(flow.label,/\b(?:GET|POST|PUT|PATCH|DELETE|HTTP|HTTPS|\d{3})\b|Bearer\s+token/i,flow.id);
 });
 
 test('selected Yourdon/Coad convention keeps all flows directed and process-mediated',()=>{
