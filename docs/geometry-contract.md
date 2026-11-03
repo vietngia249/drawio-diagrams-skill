@@ -31,7 +31,7 @@ The typed cell model accepted by `serializeCells(cells)` in `scripts/common.mjs`
 
 Vertex geometry is parent-local. Route bends are supplied in page coordinates and converted to the edge parent's coordinates by the serializer. It emits standard editable `mxCell`/`mxGeometry` cells, explicit port constraints, and a waypoint `<Array as="points">`. Legacy `vertex()` and `edge()` helpers remain available; `serializeCells` passes through legacy XML cell strings. Existing renderer and CLI entry points remain supported.
 
-`render_drawio.mjs` exposes `renderInput(input, { style, renderers })` and `registerRenderer(type, renderer)`. Renderer branches return cells and may include diagnostics/page. The class component branch registers `renderClass` for `type: "class"`; the shared geometry branch reserves a safe class registration slot. The class renderer and its registration must be integrated together for class JSON to work through the CLI.
+`render_drawio.mjs` exposes `renderInput(input, { style, renderers })` and `registerRenderer(type, renderer)`. Renderer branches return cells and may include diagnostics/page. The integrated dispatcher registers `renderClass` as the built-in `type: "class"`; class JSON uses the ordinary render CLI path.
 
 ## Planned and XML diagnostics
 

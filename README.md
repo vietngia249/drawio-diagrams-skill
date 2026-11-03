@@ -14,12 +14,13 @@ Generate editable diagrams.net (`.drawio`) files from JSON using local Node.js s
 node scripts/render_drawio.mjs examples/sequence.json -o out/sequence.drawio
 node scripts/validate_drawio.mjs out/sequence.drawio
 node scripts/render_drawio.mjs examples/erd.json -o out/erd.drawio
+node scripts/render_drawio.mjs examples/class.json -o out/class.drawio
 node scripts/render_drawio.mjs examples/dfd.json -o out/dfd.drawio
 node scripts/render_drawio.mjs examples/usecase.json -o out/usecase.drawio
 node scripts/render_drawio.mjs examples/activity.json -o out/activity.drawio
 ```
 
-Render accepts UTF-8 JSON, including an optional BOM. The output path must differ from the input and must be outside `work/drawio-references`. Semantic inputs (`sequence`, `erd`, `dfd`, `usecase`, `activity`) and generic `{ "elements": [...] }` inputs are supported. Conflicting canonical and legacy aliases produce warnings. `--help` prints command usage.
+Render accepts UTF-8 JSON, including an optional BOM. The output path must differ from the input and must be outside `work/drawio-references`. Semantic inputs (`sequence`, `erd`, `class`, `dfd`, `usecase`, `activity`) and generic `{ "elements": [...] }` inputs are supported. Conflicting canonical and legacy aliases produce warnings. `--help` prints command usage.
 
 ```sh
 node scripts/render_drawio.mjs input.json -o out/diagram.drawio --style overrides.json
@@ -35,10 +36,10 @@ The `--blind` compare mode omits label text from its report. It still reads both
 
 ## Input shapes
 
-See `examples/` for runnable examples and [rules/diagrams.md](rules/diagrams.md) for the fields and limits. The renderer component branches also include a `class` diagram input; when that renderer is present, it uses the same CLI form, `node scripts/render_drawio.mjs input.json -o out/class.drawio`.
+See `examples/` for runnable examples and [rules/diagrams.md](rules/diagrams.md) for the fields and limits. Class diagrams are built-in and use the same CLI as other semantic inputs: `node scripts/render_drawio.mjs examples/class.json -o out/class.drawio`.
 
 - **Sequence:** participants and ordered messages/fragments. Participant strings remain accepted for compatibility. Message kinds are `sync`, `async`, and `return`; omitted kind retains the legacy sync-like behavior.
-- **Class:** classes/interfaces/external classifiers/data types, attributes, operations, and relationships (`association`, `dependency`, `generalization`, `aggregation`, `composition`, `realization`). The class renderer is implemented in its component branch; this checkout's shared dispatcher exposes a registration slot until that renderer is integrated.
+- **Class:** classes/interfaces/external classifiers/data types, attributes, operations, and relationships (`association`, `dependency`, `generalization`, `aggregation`, `composition`, `realization`). The integrated CLI registers the class renderer as a built-in type.
 - **ERD:** entities with attributes and relations. `attrs`/`n`/`t`/`k` and `a`/`b` aliases remain supported. Cardinalities (`1`, `0..1`, `0..*`, `1..*`) and attribute endpoints are optional; no business cardinality is inferred.
 - **DFD:** nodes and directed flows. Legacy `processes`, `edges`, endpoint names/labels, and flow `text` remain supported. The selected Yourdon/DeMarco convention requires every flow to touch a process; this is a convention choice.
 - **Generic:** each `elements[]` entry is exactly one vertex or edge. `attrs` is canonical; top-level aliases remain accepted. IDs must be unique and cannot be `0` or `1`; parent and edge endpoints must resolve. Vertex geometry requires finite x/y/width/height and nonnegative size.
@@ -49,7 +50,7 @@ See `examples/` for runnable examples and [rules/diagrams.md](rules/diagrams.md)
 
 | Command | Behavior |
 | --- | --- |
-| `node scripts/render_drawio.mjs input.json [-o output.drawio] [--style overrides.json]` | Render sequence, ERD, DFD, use case, activity, or generic cell JSON to editable XML; `type: "class"` is available when the class component renderer is integrated. |
+| `node scripts/render_drawio.mjs input.json [-o output.drawio] [--style overrides.json]` | Render sequence, ERD, class, DFD, use case, activity, or generic cell JSON to editable XML. |
 | `node scripts/validate_drawio.mjs file.drawio [--page index\|name\|id]` | Parse plain or compressed draw.io XML and report structural errors separately from geometry warnings. Multi-page input requires explicit selection. |
 | `node scripts/import_sample.mjs input.drawio output.json [type] [--page selector]` | Import one selected page to generic cells and record known import losses in `_import.losses`. |
 | `node scripts/compare_drawio.mjs generated.drawio reference.drawio [page options] [--blind]` | Compare selected pages. Similarity scores are descriptive, not pass/fail thresholds. |
@@ -59,15 +60,15 @@ Import does not promise lossless round trips. It omits workbook metadata, unsupp
 
 ## Tests
 
-Run the shared and geometry regression suites without installing dependencies:
+Run the full regression suite without installing dependencies:
 
 ```sh
-node --test tests/shared.test.mjs tests/geometry.test.mjs
+node --test tests/*.test.mjs
 ```
 
-The suite covers generic input normalization, style overrides, XML entity/newline handling, compressed multipage selection, import loss metadata, output safety, and geometry diagnostics. It does not prove domain semantics or visual quality.
+The suite covers shared input/serialization behavior, routing, sequence, activity/use-case, DFD, ERD, and class renderer regressions. Passing tests do not prove domain semantics or visual quality.
 
-See [docs/ACCEPTANCE.md](docs/ACCEPTANCE.md) for the focused five-renderer audit, including dynamic ERD page sizing, mixed-sharing use-case layout, multilingual fixtures, fresh Desktop exports, and verification limits.
+See [docs/ACCEPTANCE.md](docs/ACCEPTANCE.md) for the earlier focused five-renderer acceptance audit. Its Desktop exports predate the current six-renderer integration; see [outputs/drawio-improvements/VERIFICATION.md](outputs/drawio-improvements/VERIFICATION.md) for the integrated test and fixture-validation record.
 
 ## Export
 

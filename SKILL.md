@@ -1,6 +1,6 @@
 ---
 name: drawio-diagrams
-description: Generate editable draw.io diagrams from source code or an assignment brief, with sequence, ERD, DFD, use-case, activity, and generic cell inputs.
+description: Generate editable draw.io diagrams from source code or an assignment brief, with sequence, ERD, class, DFD, use-case, activity, and generic cell inputs.
 ---
 
 # drawio-diagrams
@@ -21,7 +21,7 @@ Use UTF-8 JSON. The renderer accepts an optional byte-order mark, normalizes com
 
 Semantic activity, use-case, sequence, ERD, class, and DFD renderer branches use the shared planned orthogonal router. The router allocates explicit endpoint ports and distinct route tracks, routes around supplied node/label obstacles, and reports impossible routes. Generic cells are not auto-routed. XML validation independently measures explicit serialized waypoints; diagrams.net/editor auto-routes have no stored path to inspect and must be reported as unchecked. Always inspect the rendered diagram for final text and visual quality.
 
-The class renderer accepts `type: "class"` with `classes[]` (or the supported `elements[]` alias), attributes, operations, and relationships. Use the standard render command with a class JSON input when the class renderer is integrated. Its relationship vocabulary is association, dependency, generalization, aggregation, composition, and realization. Class rendering does not turn source code into a complete UML model or validate all UML well-formedness rules.
+The built-in class renderer accepts `type: "class"` with `classes[]` (or the supported `elements[]` alias), attributes, operations, and relationships. Render it with `node scripts/render_drawio.mjs examples/class.json -o output.drawio`. Its relationship vocabulary is association, dependency, generalization, aggregation, composition, and realization. Class rendering does not turn source code into a complete UML model or validate all UML well-formedness rules.
 
 Treat user-provided reference diagrams as read-only. Import one page at a time with `node scripts/import_sample.mjs input.drawio output.json generic --page selector`; imported data may retain private labels and metadata. The `_import.losses` field records known losses. Review it and the imported content before sharing.
 
