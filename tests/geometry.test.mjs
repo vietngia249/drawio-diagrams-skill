@@ -21,6 +21,11 @@ function segments(route) {
   const points = [route.sourcePort.point, ...route.points, route.targetPort.point];
   return points.slice(1).map((point, i) => [points[i], point]);
 }
+function overlappingParallelGap(a, b, c, d) {
+  if (a.x === b.x && c.x === d.x && Math.max(Math.min(a.y, b.y), Math.min(c.y, d.y)) < Math.min(Math.max(a.y, b.y), Math.max(c.y, d.y))) return Math.abs(a.x - c.x);
+  if (a.y === b.y && c.y === d.y && Math.max(Math.min(a.x, b.x), Math.min(c.x, d.x)) < Math.min(Math.max(a.x, b.x), Math.max(c.x, d.x))) return Math.abs(a.y - c.y);
+  return undefined;
+}
 function xmlDocument(extra = '') {
   return `<?xml version="1.0"?><mxfile><diagram id="p" name="P"><mxGraphModel page="1" pageWidth="420" pageHeight="300"><root><mxCell id="0"/><mxCell id="1" parent="0"/><mxCell id="A" value="A" vertex="1" parent="1"><mxGeometry x="20" y="120" width="60" height="50" as="geometry"/></mxCell><mxCell id="B" value="B" vertex="1" parent="1"><mxGeometry x="340" y="120" width="60" height="50" as="geometry"/></mxCell>${extra}</root></mxGraphModel></diagram></mxfile>`;
 }
@@ -73,6 +78,57 @@ test('parallel and reverse edges have no shared positive-length route segments',
     for (const previous of seen) assert.equal(overlapsPositiveLength(a, b, previous.a, previous.b), false, `route segment shared by ${previous.edgeId} and ${route.edgeId}`);
     seen.push({ a, b, edgeId: route.edgeId });
   }
+});
+
+test('minimum route gap spaces reverse and shared-endpoint tracks without losing orthogonality or obstacle clearance', () => {
+  const obstacles = [...nodes, { id: 'blocker', kind: 'node', bounds: { x: 175, y: 92, width: 70, height: 100 } }];
+  const result = routeOrthogonalEdges({
+    obstacles,
+    edges: [edge('ab-one', 'A', 'B'), edge('ab-two', 'A', 'B'), edge('ba', 'B', 'A')],
+    page,
+    clearance: 8,
+    minimumRouteGap: 5
+  });
+  assert.equal(result.diagnostics.filter(d => d.phase === 'planned' && d.severity === 'error').length, 0);
+  assert.equal(result.routes.length, 3);
+  const portsBySide = new Map();
+  for (const route of result.routes) {
+    const points = [route.sourcePort.point, ...route.points, route.targetPort.point];
+    for (let i = 1; i < points.length; i++) assert.ok(points[i].x === points[i - 1].x || points[i].y === points[i - 1].y, `${route.edgeId} must remain orthogonal`);
+    for (const port of [route.sourcePort, route.targetPort]) {
+      const key = `${port.nodeId}:${port.side}`;
+      if (!portsBySide.has(key)) portsBySide.set(key, []);
+      portsBySide.get(key).push(port.point);
+    }
+    for (const [a, b] of segments(route)) for (const obstacle of obstacles) {
+      if (obstacle.id === route.sourcePort.nodeId || obstacle.id === route.targetPort.nodeId) continue;
+      const bounds = obstacle.bounds, pad = 8;
+      const crosses = a.x === b.x ? a.x > bounds.x - pad && a.x < bounds.x + bounds.width + pad && Math.max(a.y, b.y) > bounds.y - pad && Math.min(a.y, b.y) < bounds.y + bounds.height + pad
+        : a.y > bounds.y - pad && a.y < bounds.y + bounds.height + pad && Math.max(a.x, b.x) > bounds.x - pad && Math.min(a.x, b.x) < bounds.x + bounds.width + pad;
+      assert.equal(crosses, false, `${route.edgeId} must clear ${obstacle.id}`);
+    }
+  }
+  for (const [key, ports] of portsBySide) for (let i = 0; i < ports.length; i++) for (let j = i + 1; j < ports.length; j++) {
+    assert.ok(Math.abs(ports[i].x - ports[j].x) + Math.abs(ports[i].y - ports[j].y) >= 5, `ports on ${key} must meet the route gap`);
+  }
+  const routedSegments = result.routes.flatMap(route => segments(route).map(([a, b]) => ({ edgeId: route.edgeId, a, b })));
+  for (let i = 0; i < routedSegments.length; i++) for (let j = i + 1; j < routedSegments.length; j++) {
+    const first = routedSegments[i], second = routedSegments[j], gap = overlappingParallelGap(first.a, first.b, second.a, second.b);
+    if (gap !== undefined) assert.ok(gap >= 5, `${first.edgeId} and ${second.edgeId} need 5 units of centerline gap: ${JSON.stringify({ first, second, gap })}`);
+  }
+});
+
+test('minimum route gap reports an infeasible shared endpoint port group in planned diagnostics', () => {
+  const smallNodes = [
+    { id: 'tiny', kind: 'node', bounds: { x: 20, y: 100, width: 40, height: 4 } },
+    { id: 'top', kind: 'node', bounds: { x: 200, y: 70, width: 50, height: 30 } },
+    { id: 'bottom', kind: 'node', bounds: { x: 200, y: 130, width: 50, height: 30 } }
+  ];
+  const result = routeOrthogonalEdges({ obstacles: smallNodes, edges: [edge('to-top', 'tiny', 'top'), edge('to-bottom', 'tiny', 'bottom')], page: { width: 300, height: 220 }, minimumRouteGap: 5 });
+  const gapErrors = result.diagnostics.filter(d => d.phase === 'planned' && d.severity === 'error' && d.code === 'ROUTE_GAP_UNAVAILABLE');
+  assert.ok(gapErrors.length);
+  assert.ok(gapErrors.some(d => d.value?.nodeId === 'tiny' && d.value?.portCount === 2 && d.value?.sideLength < d.value?.requiredLength), 'diagnostic identifies the endpoint side that cannot fit distinct ports');
+  assert.equal(result.routes.length, 0, 'edges with infeasible endpoint ports must not return invalid routes');
 });
 
 test('parallel edge labels receive separate obstacle-free bounds', () => {

@@ -35,9 +35,10 @@ The `--blind` compare mode omits label text from its report. It still reads both
 
 ## Input shapes
 
-See `examples/` for runnable examples and [rules/diagrams.md](rules/diagrams.md) for the fields and limits.
+See `examples/` for runnable examples and [rules/diagrams.md](rules/diagrams.md) for the fields and limits. The renderer component branches also include a `class` diagram input; when that renderer is present, it uses the same CLI form, `node scripts/render_drawio.mjs input.json -o out/class.drawio`.
 
 - **Sequence:** participants and ordered messages/fragments. Participant strings remain accepted for compatibility. Message kinds are `sync`, `async`, and `return`; omitted kind retains the legacy sync-like behavior.
+- **Class:** classes/interfaces/external classifiers/data types, attributes, operations, and relationships (`association`, `dependency`, `generalization`, `aggregation`, `composition`, `realization`). The class renderer is implemented in its component branch; this checkout's shared dispatcher exposes a registration slot until that renderer is integrated.
 - **ERD:** entities with attributes and relations. `attrs`/`n`/`t`/`k` and `a`/`b` aliases remain supported. Cardinalities (`1`, `0..1`, `0..*`, `1..*`) and attribute endpoints are optional; no business cardinality is inferred.
 - **DFD:** nodes and directed flows. Legacy `processes`, `edges`, endpoint names/labels, and flow `text` remain supported. The selected Yourdon/DeMarco convention requires every flow to touch a process; this is a convention choice.
 - **Generic:** each `elements[]` entry is exactly one vertex or edge. `attrs` is canonical; top-level aliases remain accepted. IDs must be unique and cannot be `0` or `1`; parent and edge endpoints must resolve. Vertex geometry requires finite x/y/width/height and nonnegative size.
@@ -48,7 +49,7 @@ See `examples/` for runnable examples and [rules/diagrams.md](rules/diagrams.md)
 
 | Command | Behavior |
 | --- | --- |
-| `node scripts/render_drawio.mjs input.json [-o output.drawio] [--style overrides.json]` | Render sequence, ERD, DFD, use case, activity, or generic cell JSON to editable XML. |
+| `node scripts/render_drawio.mjs input.json [-o output.drawio] [--style overrides.json]` | Render sequence, ERD, DFD, use case, activity, or generic cell JSON to editable XML; `type: "class"` is available when the class component renderer is integrated. |
 | `node scripts/validate_drawio.mjs file.drawio [--page index\|name\|id]` | Parse plain or compressed draw.io XML and report structural errors separately from geometry warnings. Multi-page input requires explicit selection. |
 | `node scripts/import_sample.mjs input.drawio output.json [type] [--page selector]` | Import one selected page to generic cells and record known import losses in `_import.losses`. |
 | `node scripts/compare_drawio.mjs generated.drawio reference.drawio [page options] [--blind]` | Compare selected pages. Similarity scores are descriptive, not pass/fail thresholds. |
@@ -58,10 +59,10 @@ Import does not promise lossless round trips. It omits workbook metadata, unsupp
 
 ## Tests
 
-Run the shared regression suite without installing dependencies:
+Run the shared and geometry regression suites without installing dependencies:
 
 ```sh
-node --test tests/shared.test.mjs
+node --test tests/shared.test.mjs tests/geometry.test.mjs
 ```
 
 The suite covers generic input normalization, style overrides, XML entity/newline handling, compressed multipage selection, import loss metadata, output safety, and geometry diagnostics. It does not prove domain semantics or visual quality.
@@ -79,7 +80,8 @@ The exporter discovers `drawio` on `PATH` and standard Windows Desktop locations
 ## Limits
 
 - Structural validation checks XML syntax, IDs, parents, endpoints, geometry validity, page overflow, and likely sibling overlap. Lifeline and frame intersections are treated as intentional. Warnings do not fail validation.
-- Geometry warnings are heuristic. Text wrapping, label collisions, edge crossings, visual readability, notation truth, and business semantics still require human review.
+- Planned geometry is produced by the semantic renderer and shared orthogonal router; XML validation measures serialized explicit geometry independently. Edges that rely on diagrams.net automatic routing are reported as unchecked for route quality. Neither phase can certify final rendered text metrics, notation truth, or business semantics; inspect Desktop exports.
+- The shared router is used by the activity, use-case, sequence, ERD, class, and DFD component renderer branches. Generic `elements[]` input does not receive automatic layout or routing: callers provide the cells' geometry and waypoints.
 - Import and comparison support plain XML and draw.io compressed page payloads. A multipage file requires an explicit page selector; comparisons score one selected page at a time.
 - Layout is renderer-specific and may need page-size adjustment or manual editing.
 
