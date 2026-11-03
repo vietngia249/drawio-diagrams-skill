@@ -1,0 +1,40 @@
+{
+  "type": "erd",
+  "title": "Dense relationship routing regression",
+  "entities": [
+    { "name": "Account", "attributes": [
+      { "name": "id", "type": "UUID", "key": "PK" },
+      { "name": "primaryOwnerId", "type": "UUID", "key": "FK" },
+      { "name": "secondaryOwnerId", "type": "UUID?", "key": "FK" },
+      { "name": "createdAt", "type": "DateTime" }
+    ] },
+    { "name": "Member", "attributes": [
+      { "name": "id", "type": "UUID", "key": "PK" },
+      { "name": "accountId", "type": "UUID", "key": "FK" },
+      { "name": "managerId", "type": "UUID?", "key": "FK" },
+      { "name": "displayName", "type": "String" }
+    ] },
+    { "name": "Event", "attributes": [
+      { "name": "id", "type": "UUID", "key": "PK" },
+      { "name": "accountId", "type": "UUID", "key": "FK" },
+      { "name": "actorId", "type": "UUID?", "key": "FK" },
+      { "name": "subjectId", "type": "UUID?", "key": "FK" },
+      { "name": "occurredAt", "type": "DateTime" }
+    ] },
+    { "name": "AuditRecordWithLongName", "attributes": [
+      { "name": "id", "type": "UUID", "key": "PK" },
+      { "name": "accountId", "type": "UUID", "key": "FK" },
+      { "name": "payload", "type": "JSON" }
+    ] }
+  ],
+  "relations": [
+    { "from": "Account", "to": "Member", "name": "owns members", "fromAttribute": "id", "toAttribute": "accountId", "fromCardinality": "1", "toCardinality": "0..*" },
+    { "from": "Member", "to": "Account", "name": "primary account owner", "fromAttribute": "id", "toAttribute": "primaryOwnerId", "fromCardinality": "0..*", "toCardinality": "1" },
+    { "from": "Member", "to": "Account", "name": "optional account owner", "fromAttribute": "id", "toAttribute": "secondaryOwnerId", "fromCardinality": "0..*", "toCardinality": "0..1" },
+    { "from": "Account", "to": "Event", "name": "contains events", "fromAttribute": "id", "toAttribute": "accountId", "fromCardinality": "1", "toCardinality": "0..*" },
+    { "from": "Member", "to": "Event", "name": "acts in event", "fromAttribute": "id", "toAttribute": "actorId", "fromCardinality": "0..1", "toCardinality": "0..*" },
+    { "from": "Member", "to": "Event", "name": "is event subject", "fromAttribute": "id", "toAttribute": "subjectId", "fromCardinality": "0..1", "toCardinality": "0..*" },
+    { "from": "Account", "to": "AuditRecordWithLongName", "name": "records account changes with a long explanatory label", "fromAttribute": "id", "toAttribute": "accountId", "fromCardinality": "1", "toCardinality": "0..*" },
+    { "from": "Account", "to": "Member", "name": "", "fromAttribute": "id", "toAttribute": "accountId", "fromCardinality": "1..*", "toCardinality": "0..1" }
+  ]
+}
