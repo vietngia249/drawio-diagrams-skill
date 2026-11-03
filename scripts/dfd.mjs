@@ -1,28 +1,54 @@
-import {vertex,edge,htmlText} from './common.mjs';
+import {htmlText} from './common.mjs';
+import {routeOrthogonalEdges} from './geometry.mjs';
 
 const kinds=new Set(['process','dataStore','externalEntity']);
-const clean=v=>String(v??'').trim();
-const labelOf=n=>n.label??n.name??'';
-const flowLabel=f=>f.label??f.text??'';
+const clean=value=>String(value??'').trim();
+const labelOf=node=>node.label??node.name??'';
+const flowLabel=flow=>flow.label??flow.text??'';
 const stableId=(prefix,value)=>`${prefix}_${Buffer.from(String(value),'utf8').toString('hex')||'empty'}`;
-function approxWidth(value,fontSize){
-  const lines=String(value??'').replace(/\r\n?/g,'\n').split('\n');
-  return Math.ceil(Math.max(1,...lines.map(line=>[...line].reduce((n,ch)=>n+(ch.charCodeAt(0)>0x2ff?1:.56),0)))*fontSize*1.12);
+const clamp=(value,min,max)=>Math.min(max,Math.max(min,value));
+
+function textWidth(value,fontSize){
+  return [...String(value??'')].reduce((width,char)=>width+(char.charCodeAt(0)>0x2ff?1:0.56)*fontSize,0);
+}
+function wrapText(value,maxWidth,fontSize){
+  const maxChars=Math.max(8,Math.floor(maxWidth/(fontSize*0.58))),lines=[];
+  for(const paragraph of String(value??'').replace(/\r\n?/g,'\n').split('\n')){
+    let line='';
+    for(let word of paragraph.split(/\s+/).filter(Boolean)){
+      if(line&&line.length+1+word.length<=maxChars){line+=` ${word}`;continue;}
+      if(line)lines.push(line);
+      line='';
+      while(word.length>maxChars){lines.push(word.slice(0,maxChars));word=word.slice(maxChars);}
+      line=word;
+    }
+    lines.push(line);
+  }
+  return lines.join('\n');
 }
 function resolveNode(nodes,ref,flowIndex,side){
-  const matches=nodes.filter(n=>n.id===ref||n.name===ref||labelOf(n)===ref);
+  const matches=nodes.filter(node=>node.id===ref||node.name===ref||labelOf(node)===ref);
   if(!matches.length)throw Error(`DFD flow ${flowIndex} ${side} endpoint ${JSON.stringify(ref)} does not resolve to a declared node`);
   if(matches.length>1)throw Error(`DFD flow ${flowIndex} ${side} endpoint ${JSON.stringify(ref)} is ambiguous; use a node ID`);
   return matches[0];
 }
+function vertex(id,value,style,x,y,width,height){
+  return {kind:'vertex',id,value,style,parent:'1',geometry:{x,y,width,height}};
+}
+function edge(id,source,target,style,route){
+  return {kind:'edge',id,value:'',style,parent:'1',source,target,ports:{source:{side:route.sourcePort.side,offset:route.sourcePort.offset},target:{side:route.targetPort.side,offset:route.targetPort.offset}},geometry:{relative:1,points:route.points}};
+}
+function overflow(bounds,page){
+  return bounds.x<0||bounds.y<0||bounds.x+bounds.width>page.width||bounds.y+bounds.height>page.height;
+}
 
-/** Render a directed DFD using Yourdon/DeMarco process-mediated flow semantics.
- * A data store is composed from two editable horizontal strokes and an editable label.
- */
-export function renderDfd(d,s){
-  const input=d.nodes??d.processes??[],flows=d.flows??d.edges??[];
+/** Render a directed DFD with process-mediated flow semantics and shared planned geometry. */
+export function renderDfd(data,styleConfig){
+  const input=data.nodes??data.processes??[],flows=data.flows??data.edges??[];
   if(!Array.isArray(input)||!Array.isArray(flows))throw Error('DFD nodes and flows must be arrays');
-  const ids=new Set();
+  if(data.level!==undefined&&(!Number.isInteger(data.level)||data.level<0))throw Error('DFD level must be a nonnegative integer');
+  if(data.perspective!==undefined&&!['logical','physical'].includes(data.perspective))throw Error('DFD perspective must be logical or physical');
+  const ids=new Set(),fontSize=Math.max(12,Number(styleConfig?.dfd?.fontSize)||12),fontFamily=styleConfig?.dfd?.fontFamily||'Arial';
   const nodes=input.map((node,index)=>{
     if(!node||typeof node!=='object')throw Error(`DFD node ${index} must be an object`);
     const id=clean(node.id),kind=node.kind||'process',label=clean(labelOf(node));
@@ -31,92 +57,95 @@ export function renderDfd(d,s){
     ids.add(id);
     if(!kinds.has(kind))throw Error(`DFD node ${JSON.stringify(id)} has unsupported kind ${JSON.stringify(kind)}`);
     if(!label)throw Error(`DFD node ${JSON.stringify(id)} requires a nonempty label`);
-    const style=s?.dfd?.[kind];
-    if(!style||!style.shape||!style.fillColor||!style.strokeColor||!Number.isFinite(Number(style.strokeWidth)))throw Error(`DFD style for ${kind} requires shape, fillColor, strokeColor, and numeric strokeWidth`);
-    return {...node,id,kind,label,_cell:stableId('dfd_node',id),_style:style};
+    const nodeStyle=styleConfig?.dfd?.[kind];
+    if(!nodeStyle||!nodeStyle.shape||!nodeStyle.fillColor||!nodeStyle.strokeColor||!Number.isFinite(Number(nodeStyle.strokeWidth)))throw Error(`DFD style for ${kind} requires shape, fillColor, strokeColor, and numeric strokeWidth`);
+    if(kind!=='dataStore'&&!['default','rect','ellipse'].includes(nodeStyle.shape))throw Error(`DFD style for ${kind} uses unverified native shape ${JSON.stringify(nodeStyle.shape)}`);
+    const maxWidth=kind==='dataStore'?320:260,minWidth=kind==='process'?180:160;
+    const contentWidth=clamp(textWidth(label,fontSize)+40,minWidth,maxWidth);
+    const innerWidth=contentWidth-(kind==='dataStore'?32:28);
+    const display=wrapText(label,innerWidth,fontSize),lineCount=display.split('\n').length,lineHeight=Math.ceil(fontSize*1.35);
+    const width=contentWidth,height=kind==='process'?Math.max(104,lineCount*lineHeight+32):kind==='externalEntity'?Math.max(82,lineCount*lineHeight+26):Math.max(86,lineCount*lineHeight+54);
+    const cellId=stableId('dfd_node',id);
+    return {...node,id,kind,label,display,width,height,_cell:cellId,_style:nodeStyle};
   });
   if(!nodes.length)throw Error('DFD requires at least one node');
+
   const normalized=flows.map((flow,index)=>{
     if(!flow||typeof flow!=='object')throw Error(`DFD flow ${index} must be an object`);
     const src=resolveNode(nodes,flow.from,index,'source'),dst=resolveNode(nodes,flow.to,index,'target');
     if(src.id===dst.id)throw Error(`DFD flow ${index} cannot connect a node to itself`);
-    if(src.kind!=='process'&&dst.kind!=='process')throw Error(`DFD flow ${index} violates Yourdon/DeMarco rules: every flow must connect to a process`);
-    const label=String(flowLabel(flow)??'');
-    return {flow,index,src,dst,label};
+    if(src.kind!=='process'&&dst.kind!=='process')throw Error(`DFD flow ${index} violates Yourdon/Coad rules: every flow must connect to a process`);
+    const label=String(flowLabel(flow)??'').trim();
+    const id=flow.id===undefined?String(index):clean(flow.id);
+    if(!id)throw Error(`DFD flow ${index} id must not be empty`);
+    return {flow,index,id,src,dst,label};
   });
   const flowIds=new Set();
-  for(const {flow,index} of normalized)if(flow.id!==undefined){const id=clean(flow.id);if(!id)throw Error(`DFD flow ${index} id must not be empty`);if(flowIds.has(id))throw Error(`DFD flow IDs must be unique: ${JSON.stringify(id)}`);flowIds.add(id)}
+  for(const item of normalized){if(flowIds.has(item.id))throw Error(`DFD flow IDs must be unique: ${JSON.stringify(item.id)}`);flowIds.add(item.id);}
 
   const columns=['externalEntity','process','dataStore'];
-  const fontSize=Number(s.dfd.fontSize)||10;
-  const gap=Math.max(230,...normalized.map(({label})=>Math.min(approxWidth(label,fontSize)+80,700)));
-  const widths=columns.map(kind=>Math.max(220,...nodes.filter(n=>n.kind===kind).map(n=>Math.min(Math.max(approxWidth(n.label,fontSize)+44,160),420))));
-  const xStarts=[40,40+widths[0]+gap,40+widths[0]+gap+widths[1]+gap];
-  const rows=Object.fromEntries(columns.map(k=>[k,0]));
+  const colWidths=columns.map(kind=>Math.max(0,...nodes.filter(node=>node.kind===kind).map(node=>node.width)));
+  const largestLabel=Math.max(160,...normalized.map(({label})=>Math.min(360,textWidth(label,fontSize)+32)));
+  const clearance=18,colGap=Math.max(230,Math.min(560,largestLabel+2*clearance+40)),top=84,rowGap=128,pad=64;
+  const xStarts=[pad,pad+colWidths[0]+colGap,pad+colWidths[0]+colGap+colWidths[1]+colGap];
+  const rows=Object.fromEntries(columns.map(kind=>[kind,0]));
   for(const node of nodes){
-    const column=columns.indexOf(node.kind),labelWidth=Math.min(Math.max(approxWidth(node.label,fontSize)+36,160),420);
-    node.width=labelWidth;node.height=node.kind==='process'?100:86;
-    node.x=xStarts[column]+(widths[column]-node.width)/2;
-    node.y=160+rows[node.kind]++*260;
+    const col=columns.indexOf(node.kind);
+    node.x=xStarts[col]+(colWidths[col]-node.width)/2;
+    node.y=top+(rows[node.kind]++)*(Math.max(0,...nodes.filter(other=>other.kind===node.kind).map(other=>other.height))+rowGap);
+    node.bounds={x:node.x,y:node.y,width:node.width,height:node.height};
   }
-  const cells=[];
-  for(const node of nodes){
-    const st=node._style;
-    if(node.kind==='dataStore'){
-      // Keep an invisible rectangular endpoint for flows. The visible glyph is
-      // the Yourdon/Coad pair of horizontal store lines, not the configured box.
-      cells.push(vertex(node._cell,'',`shape=rect;fillColor=none;strokeColor=none;opacity=0;`,node.x,node.y,node.width,node.height));
-      const lineStyle=`shape=rect;html=1;fillColor=${st.strokeColor};strokeColor=${st.strokeColor};strokeWidth=${st.strokeWidth};`;
-      const lineX=node.x+6,lineWidth=node.width-12,topY=node.y+23,bottomY=node.y+63;
-      cells.push(vertex(stableId('dfd_store_top',node.id),'',lineStyle,lineX,topY,lineWidth,2));
-      cells.push(vertex(stableId('dfd_store_bottom',node.id),'',lineStyle,lineX,bottomY,lineWidth,2));
-      const labelStyle=`text;html=1;whiteSpace=wrap;align=center;verticalAlign=middle;fontFamily=${s.dfd.fontFamily||'Arial'};fontSize=${fontSize};fillColor=${st.fillColor};strokeColor=none;`;
-      cells.push(vertex(stableId('dfd_store_label',node.id),htmlText(node.label),labelStyle,node.x+8,node.y+29,node.width-16,28));
-    }else{
-      const style=`shape=${st.shape};whiteSpace=wrap;html=1;fontFamily=${s.dfd.fontFamily||'Arial'};fontSize=${fontSize};fillColor=${st.fillColor};strokeColor=${st.strokeColor};strokeWidth=${st.strokeWidth};rounded=${st.rounded??0};`;
-      cells.push(vertex(node._cell,htmlText(node.label),style,node.x,node.y,node.width,node.height));
+  const right=Math.max(...nodes.map(node=>node.x+node.width)),bottom=Math.max(...nodes.map(node=>node.y+node.height));
+  const explicitPage=data.page;
+  const page={width:explicitPage?.width??right+pad+Math.min(260,colGap*0.55),height:explicitPage?.height??bottom+pad+150};
+  for(const key of ['width','height'])if(!Number.isFinite(page[key])||page[key]<=0)throw Error(`DFD page.${key} must be positive and finite`);
+
+  const labelSizes=new Map();
+  const edgeRequests=normalized.map(({id,src,dst,label})=>{
+    let labelSize;
+    if(label){
+      const width=clamp(textWidth(label,fontSize)+32,160,360),display=wrapText(label,width-20,fontSize),height=Math.max(28,display.split('\n').length*(fontSize+5)+8);
+      labelSize={id:stableId('dfd_flow_label',id),width,height,display};labelSizes.set(id,labelSize);
     }
+    return {id:stableId('dfd_flow',id),source:{nodeId:src._cell},target:{nodeId:dst._cell},...(labelSize?{label:{id:labelSize.id,width:labelSize.width,height:labelSize.height}}:{})};
+  });
+  const obstacles=nodes.map(node=>({id:node._cell,kind:'node',bounds:node.bounds}));
+  const routed=routeOrthogonalEdges({obstacles,edges:edgeRequests,page,clearance});
+  const diagnostics=[...routed.diagnostics];
+  for(const node of nodes)if(overflow(node.bounds,page))diagnostics.push({phase:'planned',severity:'warning',code:'DFD_PAGE_OVERFLOW',path:`nodes.${node.id}`,message:'Node extends beyond the explicit DFD page bounds',value:node.bounds});
+  if(diagnostics.some(item=>item.severity==='error')){
+    const error=new Error(`DFD geometry planning failed: ${diagnostics.filter(item=>item.severity==='error').map(item=>item.message).join('; ')}`);
+    error.diagnostics=diagnostics;throw error;
   }
 
-  // Keep each pair's reverse and parallel flows on distinct ports and tracks.
-  const pairTotals=new Map(),pairUse=new Map();
-  for(const {src,dst} of normalized){const pair=[src.id,dst.id].sort().join('\0');pairTotals.set(pair,(pairTotals.get(pair)||0)+1)}
-  for(const {flow,index,src,dst,label} of normalized){
-    const pair=[src.id,dst.id].sort().join('\0'),ordinal=pairUse.get(pair)||0;pairUse.set(pair,ordinal+1);
-    const total=pairTotals.get(pair),slot=total===1?.5:.08+ordinal*.84/(total-1),labelSide=slot<.5?-1:slot>.5?1:(src.id.localeCompare(dst.id)<0?-1:1);
-    const horizontal=Math.abs((dst.x+dst.width/2)-(src.x+src.width/2))>=Math.abs((dst.y+dst.height/2)-(src.y+src.height/2));
-    let anchors,points,labelX,labelY;
-    if(horizontal){
-      const sourceOnLeft=src.x+src.width/2<dst.x+dst.width/2;
-      const srcY=slot,dstY=slot;
-      const midX=sourceOnLeft?(src.x+src.width+dst.x)/2:(dst.x+dst.width+src.x)/2;
-      anchors=`exitX=${sourceOnLeft?1:0};exitY=${srcY};entryX=${sourceOnLeft?0:1};entryY=${dstY};`;
-      const trackY=(src.y+src.height*srcY+dst.y+dst.height*dstY)/2;
-      points=[{x:midX,y:trackY}];labelX=midX;
-      labelY=(src.y+src.height*srcY+dst.y+dst.height*dstY)/2;
+  const routeById=new Map(routed.routes.map(route=>[route.edgeId,route])),cells=[];
+  for(const node of nodes){
+    const style=node._style;
+    if(node.kind==='dataStore'){
+      // One invisible semantic endpoint spans the documented editable two-line store glyph.
+      cells.push(vertex(node._cell,'','shape=rect;fillColor=none;strokeColor=none;opacity=0;',node.x,node.y,node.width,node.height));
+      const lineStyle=`shape=rect;html=1;fillColor=${style.strokeColor};strokeColor=${style.strokeColor};strokeWidth=${style.strokeWidth};`;
+      cells.push(vertex(stableId('dfd_store_top',node.id),'',lineStyle,node.x+8,node.y+20,node.width-16,2));
+      cells.push(vertex(stableId('dfd_store_bottom',node.id),'',lineStyle,node.x+8,node.y+node.height-20,node.width-16,2));
+      const labelStyle=`text;html=1;whiteSpace=wrap;align=center;verticalAlign=middle;fontFamily=${fontFamily};fontSize=${fontSize};fillColor=${style.fillColor};strokeColor=none;`;
+      cells.push(vertex(stableId('dfd_store_label',node.id),htmlText(node.display),labelStyle,node.x+12,node.y+24,node.width-24,node.height-48));
     }else{
-      const sourceAbove=src.y+src.height/2<dst.y+dst.height/2;
-      const srcX=slot,dstX=slot;
-      const midY=sourceAbove?(src.y+src.height+dst.y)/2:(dst.y+dst.height+src.y)/2;
-      const routeX=(src.x+src.width*srcX+dst.x+dst.width*dstX)/2;
-      anchors=`exitX=${srcX};exitY=${sourceAbove?1:0};entryX=${dstX};entryY=${sourceAbove?0:1};`;
-      points=[{x:routeX,y:midY}];labelX=routeX+labelSide*90;
-      labelY=midY;
-    }
-    const cfg=s.dfd.dataFlow||{};
-    if(!cfg.strokeColor||!Number.isFinite(Number(cfg.strokeWidth))||!cfg.arrow)throw Error('DFD dataFlow style requires strokeColor, numeric strokeWidth, and arrow');
-    const style=`edgeStyle=orthogonalEdgeStyle;rounded=0;jettySize=auto;${anchors}endArrow=${cfg.arrow};startArrow=none;html=1;whiteSpace=wrap;fontFamily=${s.dfd.fontFamily||'Arial'};fontSize=${fontSize};strokeColor=${cfg.strokeColor};strokeWidth=${cfg.strokeWidth};`;
-    const xml=edge(stableId('dfd_flow',flow.id??index),src._cell,dst._cell,'',style,'1',{points});
-    cells.push(xml);
-    if(label.trim()){
-      const labelWidth=Math.min(Math.max(220,approxWidth(label,fontSize)+20),Math.max(220,gap-50),500);
-      const lineCount=Math.max(...label.split(/\r?\n/).map(line=>Math.max(1,Math.ceil(approxWidth(line,fontSize)/(labelWidth-20)))));
-      const labelHeight=Math.max(28,lineCount*(fontSize+5)+8);
-      if(horizontal)labelY=points[0].y+labelSide*(labelHeight/2+10);
-      else labelX=points[0].x+labelSide*(labelWidth/2+10);
-      const labelStyle=`text;html=1;whiteSpace=wrap;align=center;verticalAlign=middle;fontFamily=${s.dfd.fontFamily||'Arial'};fontSize=${fontSize};fillColor=#ffffff;strokeColor=none;`;
-      cells.push(vertex(stableId('dfd_flow_label',flow.id??index),htmlText(label),labelStyle,labelX-labelWidth/2,labelY-labelHeight/2,labelWidth,labelHeight));
+      const shapeStyle=`shape=${style.shape};whiteSpace=wrap;html=1;fontFamily=${fontFamily};fontSize=${fontSize};fillColor=${style.fillColor};strokeColor=${style.strokeColor};strokeWidth=${style.strokeWidth};rounded=${style.rounded??0};`;
+      cells.push(vertex(node._cell,htmlText(node.display),shapeStyle,node.x,node.y,node.width,node.height));
     }
   }
-  return cells;
+  const cfg=styleConfig?.dfd?.dataFlow||{};
+  if(!cfg.strokeColor||!Number.isFinite(Number(cfg.strokeWidth))||!cfg.arrow)throw Error('DFD dataFlow style requires strokeColor, numeric strokeWidth, and arrow');
+  for(const item of normalized){
+    const route=routeById.get(stableId('dfd_flow',item.id));
+    if(!route)throw Error(`DFD geometry did not return flow ${item.id}`);
+    const style=`edgeStyle=orthogonalEdgeStyle;rounded=0;jettySize=auto;endArrow=${cfg.arrow};startArrow=none;html=1;whiteSpace=wrap;fontFamily=${fontFamily};fontSize=${fontSize};strokeColor=${cfg.strokeColor};strokeWidth=${cfg.strokeWidth};`;
+    cells.push(edge(stableId('dfd_flow',item.id),item.src._cell,item.dst._cell,style,route));
+    const label=labelSizes.get(item.id);
+    if(label){
+      const b=route.label.bounds,textStyle=`text;html=1;whiteSpace=wrap;align=center;verticalAlign=middle;fontFamily=${fontFamily};fontSize=${fontSize};fillColor=#ffffff;strokeColor=none;`;
+      cells.push(vertex(label.id,htmlText(label.display),textStyle,b.x,b.y,b.width,b.height));
+    }
+  }
+  return {cells,diagnostics,page};
 }

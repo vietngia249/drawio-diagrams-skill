@@ -1,92 +1,64 @@
 {
   "type": "usecase",
-  "title": "Đăng ký dịch vụ & hỗ trợ khách hàng",
-  "systemName": "Cổng dịch vụ công trực tuyến",
+  "title": "Quản lý và ghi nhận buổi tập",
+  "systemName": "FitTrackAI — Quản lý buổi tập",
   "page": {
-    "width": 1600,
-    "height": 900
+    "width": 1800,
+    "height": 1100
   },
   "actors": [
     {
-      "id": "citizen",
-      "label": "Người dân / đại diện tổ chức"
-    },
-    {
-      "id": "officer",
-      "label": "Cán bộ tiếp nhận hồ sơ"
+      "id": "athlete",
+      "label": "Vận động viên\n(đã xác thực)"
     }
   ],
   "useCases": [
     {
-      "id": "submit",
-      "label": "Nộp hồ sơ\nđăng ký dịch vụ"
+      "id": "plans",
+      "label": "Tạo và xem\nkế hoạch tập"
     },
     {
-      "id": "pay",
-      "label": "Thanh toán lệ phí"
+      "id": "start",
+      "label": "Bắt đầu buổi tập\ntừ kế hoạch hoặc nhanh"
     },
     {
       "id": "track",
-      "label": "Theo dõi trạng thái\nhồ sơ"
+      "label": "Theo dõi buổi tập\nvà ghi nhận hiệp"
     },
     {
-      "id": "appeal",
-      "label": "Yêu cầu bổ sung\nhoặc khiếu nại"
+      "id": "finish",
+      "label": "Hoàn tất và lưu\nbuổi tập"
     },
     {
-      "id": "verify",
-      "label": "Kiểm tra thông tin\n& tài liệu đính kèm"
-    },
-    {
-      "id": "notify",
-      "label": "Nhận thông báo\n«đã xử lý»"
+      "id": "history",
+      "label": "Xem lịch sử\nbuổi tập"
     }
   ],
   "relationships": [
     {
-      "from": "citizen",
-      "to": "submit",
+      "from": "athlete",
+      "to": "plans",
       "type": "association"
     },
     {
-      "from": "citizen",
-      "to": "pay",
+      "from": "athlete",
+      "to": "start",
       "type": "association"
     },
     {
-      "from": "citizen",
+      "from": "athlete",
       "to": "track",
       "type": "association"
     },
     {
-      "from": "citizen",
-      "to": "appeal",
+      "from": "athlete",
+      "to": "finish",
       "type": "association"
     },
     {
-      "from": "officer",
-      "to": "verify",
+      "from": "athlete",
+      "to": "history",
       "type": "association"
-    },
-    {
-      "from": "officer",
-      "to": "notify",
-      "type": "association"
-    },
-    {
-      "from": "submit",
-      "to": "verify",
-      "type": "include"
-    },
-    {
-      "from": "pay",
-      "to": "submit",
-      "type": "extend"
-    },
-    {
-      "from": "appeal",
-      "to": "track",
-      "type": "generalization"
     }
   ]
 }

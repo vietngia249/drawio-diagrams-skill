@@ -1,4 +1,6 @@
-# Final acceptance audit
+﻿# Earlier acceptance audit (historical)
+
+This focused audit predates the six-renderer integration and records evidence for the original five renderers only. For current integrated tests and fixture validation, see [outputs/drawio-improvements/VERIFICATION.md](../outputs/drawio-improvements/VERIFICATION.md).
 
 ## Scope and fixtures
 
@@ -10,11 +12,11 @@ ERD page dimensions are inferred from entity geometry, relation labels, and self
 
 Run from the repository root:
 
-- `node --test tests/shared.test.mjs` ? 32 passed, 0 failed.
-- `node --check` over every `scripts/*.mjs` and `tests/*.mjs` file ? passed.
-- Each acceptance JSON was rendered with `scripts/render_drawio.mjs` and checked with `scripts/validate_drawio.mjs` ? no structural errors or warnings.
+- `node --test tests/shared.test.mjs` — 32 passed, 0 failed.
+- `node --check` over every `scripts/*.mjs` and `tests/*.mjs` file — passed.
+- Each acceptance JSON was rendered with `scripts/render_drawio.mjs` and checked with `scripts/validate_drawio.mjs` — no structural errors or warnings.
 - Each generated diagram was exported through `scripts/export.ps1` using the installed diagrams.net Desktop executable. The helper checked fresh output, PNG signature, and nonempty output.
-- ERD regressions cover inferred bounds for a tall multiline table and preservation/overflow reporting for an explicit 320?240 page.
+- ERD regressions cover inferred bounds for a tall multiline table and preservation/overflow reporting for an explicit 320 × 240 page.
 - Sequence and mixed-sharing use-case regressions inspect emitted diagram structure and routing; the ERD relation-label regression checks label height and connector clearance.
 
 ## Visual review

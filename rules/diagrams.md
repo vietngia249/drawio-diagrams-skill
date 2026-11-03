@@ -26,7 +26,11 @@ Set `type` to `usecase`. Declare `actors[]` and `useCases[]` with unique `id` an
 
 ## Activity
 
-Set `type` to `activity`. Declare `nodes[]` with unique `id` and a `kind`: `initial`, `action`, `decision`, `merge`, `final`, `activityFinal`, or `flowFinal`. Action nodes need a nonempty label. Optional numeric `x` and `y` set positions; otherwise a simple grid is used. `transitions[]` use `from` and `to` IDs plus optional `id`, `guard`, or `label`. Guards are display labels, not evaluated conditions. The renderer checks endpoint references but does not prove a complete or behaviorally correct activity model.
+Set `type` to `activity`. Declare `nodes[]` with unique `id` and a `kind`: `initial`, `action`, `decision`, `merge`, `final`, `activityFinal`, or `flowFinal`. Action nodes need a nonempty label. Optional numeric `x` and `y` set positions; otherwise the renderer uses a simple fallback grid. `transitions[]` use `from` and `to` IDs plus optional `id`, `guard`, or `label`. Guards are display labels, not evaluated conditions. The renderer checks endpoint references and uses the shared planned router for orthogonal transitions; this does not prove a complete or behaviorally correct activity model.
+
+## Class
+
+The built-in class renderer accepts `type: "class"` with a nonempty `classes[]` array (or `elements[]` alias). Each class has a unique `id` or `name`, optional display `name`, `kind` (`class`, `interface`, `external`, `datatype`), optional `stereotype`, `attributes[]`, and `operations[]`. Members require a name; visibility accepts `public`, `private`, `protected`, or `package` and defaults to package visibility. Attributes may include `type`. Operations may include `parameters[]` (or `params[]`) and `returnType`; each parameter needs a name and may have a type or `optional` marker. Relationships (or alias `relations`) use `from`, `to`, and a type: `association`, `dependency`, `generalization`, `aggregation`, `composition`, or `realization`. Relationship labels are optional. Associations may also provide source/target role and multiplicity labels. The renderer checks IDs/endpoints and planned geometry; it does not infer source-model facts. Render with `node scripts/render_drawio.mjs examples/class.json -o out/class.drawio`.
 
 ## Generic cells
 
@@ -34,4 +38,4 @@ Set `elements` to an array. Each element declares exactly one of `vertex` or `ed
 
 ## Review
 
-Use the validator's errors to fix malformed XML structure, duplicate IDs, missing parents/endpoints, or invalid geometry. Treat overlap and page-bound messages as warnings. Lifeline/frame intersections are expected and excluded from sibling-overlap warnings. Inspect rendered diagrams in diagrams.net; automated checks do not establish correct business logic, readable labels, clean edge crossings, or domain-appropriate notation.
+Use the validator's errors to fix malformed XML structure, duplicate IDs, missing parents/endpoints, or invalid geometry. Treat overlap and page-bound messages as warnings. Explicit serialized route points can be checked for bounds, orthogonality, and measurable node/shared-segment conflicts; automatic editor routes are unchecked. Lifeline/frame intersections are expected. Inspect rendered diagrams in diagrams.net; automated checks do not establish correct business logic, readable labels, clean edge crossings, or domain-appropriate notation.

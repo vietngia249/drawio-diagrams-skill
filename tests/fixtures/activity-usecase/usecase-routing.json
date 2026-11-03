@@ -1,0 +1,26 @@
+{
+  "type": "usecase",
+  "title": "Use-case routing and native actor sizing",
+  "systemName": "Workout service boundary",
+  "page": { "width": 1800, "height": 1000 },
+  "actors": [
+    { "id": "athlete", "label": "Authenticated athlete with a deliberately long explanatory label" },
+    { "id": "coach", "label": "Coach" }
+  ],
+  "useCases": [
+    { "id": "plans", "label": "Create and review workout plans" },
+    { "id": "start", "label": "Start a planned or quick workout" },
+    { "id": "track", "label": "Track completed sets and repetitions" },
+    { "id": "finish", "label": "Complete and save the workout" },
+    { "id": "history", "label": "Review workout history" }
+  ],
+  "relationships": [
+    { "id": "athlete-plans", "from": "athlete", "to": "plans", "type": "association" },
+    { "id": "athlete-start", "from": "athlete", "to": "start", "type": "association" },
+    { "id": "athlete-track", "from": "athlete", "to": "track", "type": "association" },
+    { "id": "athlete-finish", "from": "athlete", "to": "finish", "type": "association" },
+    { "id": "athlete-history", "from": "athlete", "to": "history", "type": "association" },
+    { "id": "coach-track", "from": "coach", "to": "track", "type": "association" },
+    { "id": "coach-history", "from": "coach", "to": "history", "type": "association" }
+  ]
+}

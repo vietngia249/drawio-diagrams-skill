@@ -1,33 +1,19 @@
-# Acceptance verification
+# Verification record
 
-## Result
+## Current integrated run
 
-The final acceptance audit covers sequence, ERD, DFD, use-case, and activity renderers. Current result: 32 shared tests passed, and all five acceptance examples were rendered, validated, exported through diagrams.net Desktop, and visually reviewed. This final 32-test result supersedes the earlier 30-test addendum; use this verification record as the current result.
+This verification covers the local six-renderer integration at merge commit `5e35471b06891786cb82f98977d37cb743811643`, based on `e8130af860f8c7933a498aa8811ca96998eecdf5`. It includes activity, use-case, sequence, ERD, class, DFD, shared serialization, and shared geometry tests.
 
-## Commands and evidence
+- `node --test`: **92 passed, 0 failed**.
+- `node --check` over all `.mjs` files under `scripts/` and `tests/`: all 19 files passed.
+- `git diff --check e8130af..HEAD`: passed.
+- Rendered each of `examples/{sequence,activity,usecase,erd,class,dfd}.json` with `scripts/render_drawio.mjs`, then checked the resulting `.drawio` with `scripts/validate_drawio.mjs`: all six returned zero errors and zero warnings.
+- The validator reported unchecked automatic-route counts of 0 for sequence, 0 for activity, 9 for use case, 9 for ERD, 5 for class, and 6 for DFD. An unchecked route has no explicit path available to measure; it is not a passing route-quality check.
 
-From the worker checkout at `C:/Users/Ngia/.ao/data/worktrees/drawio-diagrams-skill/drawio-diagrams-skill-15`:
+These six integrated examples were validated as XML. No fresh Desktop PNG export or visual inspection was performed for this integrated run. The older acceptance PNGs below predate integration and are not evidence of the current integrated rendering.
 
-- `node --test tests/shared.test.mjs`: 32 passed, 0 failed.
-- `node --check` was run for every `scripts/*.mjs` and `tests/*.mjs` file: passed.
-- For each `tests/fixtures/acceptance/{sequence,erd,dfd,usecase,activity}.json` input, `scripts/render_drawio.mjs` generated an editable diagram and `scripts/validate_drawio.mjs` reported no errors or warnings.
-- Each diagram was passed to `scripts/export.ps1 -Format png` using the installed diagrams.net Desktop executable. The script confirmed fresh, nonempty PNG output with a valid PNG signature.
-- `git diff --check` passed.
+## Earlier focused acceptance audit (historical)
 
-The preview artifacts are `C:/Users/Ngia/.ao/data/artifacts/drawio-diagrams-skill-15/acceptance-preview`: `sequence.png`, `erd.png`, `dfd.png`, `usecase.png`, and `activity.png`. Editable `.drawio` sources are alongside them. The sequence preview was regenerated directly from the D-source acceptance fixture for this final handoff (38 cells; zero validation errors or warnings), freshly exported, and visually inspected. The ERD preview was regenerated after its final label fix; the other three previews were exported from the final source snapshot and their renderer code did not change afterward.
+The earlier audit covered only sequence, ERD, DFD, use-case, and activity. In its worker checkout, `node --test tests/shared.test.mjs` passed 32 tests. The five acceptance fixtures were rendered and structurally validated without errors or warnings, exported with diagrams.net Desktop, and visually reviewed. The audit also checked JavaScript syntax and `git diff --check` for its then-current files.
 
-## Confirmed behaviors
-
-- ERD without a page request infers sufficient bounds for long and multiline entities plus relation labels. Explicit 320 x 240 remains 320 x 240 and reports page overflow.
-- The long ERD relation label wraps above its connector with clearance.
-- Use-case shared associations from actors on opposite sides have separate actor exits and remain individually readable.
-- Sequence output has three participants, synchronous and return messages, nested `alt`/`opt` fragments, a long guard, and a self-message. The self-message appears as a compact loop in the Desktop preview.
-- Semantic labels preserve Vietnamese diacritics and literal `&`, `<`, and `>` characters through the HTML layer.
-
-## Review limits
-
-The validator provides structural checks; it cannot prove semantic correctness, full UML or data-flow notation conformance, accessibility, or readability across all fonts and zoom settings. Manual review covers only the five synthetic examples. Desktop export and preview inspection are direct evidence for this environment, not for other platforms.
-
-## Installed path
-
-`C:/Users/Ngia/.codex/skills/drawio-diagrams` was verified as a Windows junction to `D:/MyProject/drawio-diagrams-skill` after source integration. The junction was preserved. No commit or push was made.
+Its preview artifacts are in `C:/Users/Ngia/.ao/data/artifacts/drawio-diagrams-skill-15/acceptance-preview/`. They document the earlier five-renderer audit only; they predate the current integration and do not include class-diagram output.

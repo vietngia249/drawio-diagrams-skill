@@ -1,33 +1,37 @@
 {
   "type": "sequence",
-  "title": "Order submission with optional payment",
-  "page": {"width": 1400, "height": 900},
+  "title": "Hoàn tất buổi tập và lưu các hiệp",
+  "page": { "width": 3000, "height": 1900 },
   "participants": [
-    {"id": "client", "label": "Customer application"},
-    {"id": "api", "label": "Order processing API"},
-    {"id": "inventory", "label": "Inventory service"}
+    { "id": "athlete", "label": "Vận động viên (đã xác thực)", "shape": "umlActor" },
+    { "id": "ui", "label": "Giao diện\nActiveWorkoutSession" },
+    { "id": "api", "label": "API Fastify\ncontroller/routes" },
+    { "id": "svc", "label": "WorkoutsService" },
+    { "id": "db", "label": "Prisma / PostgreSQL" }
   ],
   "messages": [
-    {"order": 1, "from": "client", "to": "api", "label": "Submit order", "kind": "sync"},
-    {"order": 4, "from": "api", "to": "client", "label": "Return order confirmation", "kind": "return"}
+    { "kind": "sync", "order": 0, "label": "Nhấn nút “Save & Complete”", "from": "athlete", "to": "ui" },
+    { "kind": "sync", "order": 1, "label": "POST /api/v1/workouts/sessions/{id}/complete\nBearer token; thời lượng; danh sách bài tập và hiệp", "from": "ui", "to": "api" },
+    { "kind": "sync", "order": 2, "label": "completeSession(userId từ token, sessionId, input hợp lệ)", "from": "api", "to": "svc" },
+    { "kind": "sync", "order": 3, "label": "Tìm session theo id và userId; đọc các bài tập và hiệp", "from": "svc", "to": "db" },
+    { "kind": "return", "order": 4, "label": "Session sở hữu bởi user và dữ liệu hiện hành", "from": "db", "to": "svc" },
+    { "kind": "sync", "order": 5, "label": "Upsert SessionExercise và ExerciseSet từ payload nếu có", "from": "svc", "to": "db" },
+    { "kind": "sync", "order": 6, "label": "Đọc lại session và các hiệp", "from": "svc", "to": "db" },
+    { "kind": "return", "order": 7, "label": "Session cùng tất cả hiệp", "from": "db", "to": "svc" },
+    { "kind": "sync", "order": 8, "label": "Tính tổng weightKg × reps của hiệp hoàn tất; xác định thời lượng", "from": "svc", "to": "svc" },
+    { "kind": "sync", "order": 9, "label": "Cập nhật trạng thái, thời gian, tổng volume và ghi chú", "from": "svc", "to": "db" },
+    { "kind": "return", "order": 10, "label": "Session đã cập nhật kèm bài tập và hiệp", "from": "db", "to": "svc" },
+    { "kind": "return", "order": 11, "label": "WorkoutSession đã hoàn tất", "from": "svc", "to": "api" },
+    { "kind": "return", "order": 12, "label": "200 JSON session", "from": "api", "to": "ui" }
   ],
-  "fragments": [
-    {
-      "kind": "alt",
-      "order": 2,
-      "branches": [
-        {
-          "guard": "[all requested items are available]",
-          "messages": [
-            {"order": 1, "from": "api", "to": "inventory", "label": "Reserve every requested item for this order", "kind": "sync"},
-            {"order": 2, "from": "inventory", "to": "api", "label": "Reservation accepted", "kind": "return"}
-          ],
-          "fragments": [
-            {"kind": "opt", "order": 3, "branches": [{"guard": "[payment authorization is required]", "messages": [{"from": "api", "to": "api", "label": "Create payment authorization request", "kind": "async"}]}]}
-          ]
-        },
-        {"guard": "[one or more items are unavailable]", "messages": [{"from": "api", "to": "client", "label": "Return unavailable item details", "kind": "return"}]}
-      ]
-    }
+  "fragments": [],
+  "activations": [
+    { "participant": "ui", "startOrder": 0, "startEnd": "target", "endOrder": 12, "endEnd": "target" },
+    { "participant": "api", "startOrder": 1, "startEnd": "target", "endOrder": 12, "endEnd": "source" },
+    { "participant": "svc", "startOrder": 2, "startEnd": "target", "endOrder": 11, "endEnd": "source" },
+    { "participant": "db", "startOrder": 3, "startEnd": "target", "endOrder": 4, "endEnd": "source" },
+    { "participant": "db", "startOrder": 5, "startEnd": "target", "endOrder": 6, "endEnd": "target" },
+    { "participant": "db", "startOrder": 6, "startEnd": "target", "endOrder": 7, "endEnd": "source" },
+    { "participant": "db", "startOrder": 9, "startEnd": "target", "endOrder": 10, "endEnd": "source" }
   ]
 }

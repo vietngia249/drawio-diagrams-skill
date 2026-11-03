@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+export { DEFAULT_PRESENTATION_TOKENS, createPresentationTokens, fitShapeToBounds, selfMessageGeometry, spacingFor, styleForRole } from './presentation.mjs';
 
 export class DiagramInputError extends Error {
   constructor(message, diagnostics = []) { super(message); this.name = 'DiagramInputError'; this.diagnostics = diagnostics; }
@@ -43,7 +44,7 @@ export function normalizeInput(data) {
     return { ...data, elements, type: 'generic', diagnostics };
   }
   const type = data.type;
-  if (!['sequence', 'erd', 'dfd', 'usecase', 'activity'].includes(type)) throw new DiagramInputError(`Unsupported diagram type: ${String(type)}. Supported types: sequence, erd, dfd, usecase, activity, or generic elements`, [diagnostic('error', 'UNSUPPORTED_TYPE', '$.type', 'Expected sequence, erd, dfd, usecase, activity, or generic elements', type)]);
+  if (!['sequence', 'erd', 'dfd', 'usecase', 'activity', 'class'].includes(type)) throw new DiagramInputError(`Unsupported diagram type: ${String(type)}. Supported types: sequence, erd, dfd, usecase, activity, class registration slot, or generic elements`, [diagnostic('error', 'UNSUPPORTED_TYPE', '$.type', 'Expected sequence, erd, dfd, usecase, activity, class registration slot, or generic elements', type)]);
   const equal = (a, b) => JSON.stringify(a) === JSON.stringify(b);
   const conflict = (canonicalPath, legacyPath, canonical, legacy) => { if (canonical !== undefined && legacy !== undefined && !equal(canonical, legacy)) diagnostics.push(diagnostic('warning', 'ALIAS_CONFLICT', canonicalPath, `Conflicting legacy field ${legacyPath}; renderer precedence applies`, { canonical, legacy })); };
   if (type === 'erd') {
@@ -83,11 +84,15 @@ export function validateGeneric(data) {
     }
     if (el.edge) for (const k of ['source', 'target']) {
       const endpoint = a[k] ?? el[k];
-      if (endpoint === undefined || String(endpoint).trim() === '') errors.push(diagnostic('error', 'ENDPOINT_REQUIRED', `${p}.attrs.${k}`, `${k} is required`));
+      const pointName = `${k}Point`, explicitPoint = g[pointName] ?? (Array.isArray(g.points) ? g.points.find(point => point?.as === pointName) : undefined);
+      if (endpoint === undefined || String(endpoint).trim() === '') {
+        if (!explicitPoint) errors.push(diagnostic('error', 'ENDPOINT_REQUIRED', `${p}.attrs.${k}`, `${k} is required unless an explicit ${pointName} is supplied`));
+      }
       else if (!ids.has(String(endpoint)) && !elements.some(other => String(other.attrs.id) === String(endpoint))) errors.push(diagnostic('error', 'ENDPOINT_UNRESOLVED', `${p}.attrs.${k}`, `${k} ${endpoint} does not resolve`, endpoint));
     }
     if (el.edge && g.points !== undefined && !Array.isArray(g.points)) errors.push(diagnostic('error', 'POINTS_ARRAY', `${p}.geometry.points`, 'Edge points must be an array'));
     if (el.edge && g.points !== undefined && Array.isArray(g.points)) for (const [j, point] of g.points.entries()) if (!isObject(point) || !Number.isFinite(point.x) || !Number.isFinite(point.y)) errors.push(diagnostic('error', 'POINT_GEOMETRY', `${p}.geometry.points[${j}]`, 'Expected finite x and y', point));
+    if (el.edge) for (const key of ['sourcePoint', 'targetPoint']) if (g[key] !== undefined && (!isObject(g[key]) || !Number.isFinite(g[key].x) || !Number.isFinite(g[key].y))) errors.push(diagnostic('error', 'POINT_GEOMETRY', `${p}.geometry.${key}`, 'Expected finite x and y', g[key]));
   }
   const elementById = new Map(elements.map(el => [String(el.attrs.id), el]));
   for (const [i, el] of elements.entries()) {
@@ -148,13 +153,52 @@ export function loadStyle(override = {}) {
 export function vertex(id, value, style, x, y, w, h, parent = '1') { return `<mxCell id="${esc(id)}" value="${esc(value)}" style="${esc(style)}" vertex="1" parent="${esc(parent)}"><mxGeometry x="${x}" y="${y}" width="${w}" height="${h}" as="geometry"/></mxCell>`; }
 export function edge(id, source, target, value, style, parent = '1', geometry = {}) {
   const points = Array.isArray(geometry?.points) ? geometry.points : [];
-  const point = p => {
+  const point = (p, direct = false) => {
     if (!isObject(p) || !Number.isFinite(p.x) || !Number.isFinite(p.y)) throw new DiagramInputError('Edge waypoints require finite x and y', [diagnostic('error', 'POINT_GEOMETRY', '$geometry.points', 'Expected finite x and y', p)]);
-    return `<mxPoint x="${p.x}" y="${p.y}" as="${esc(p.as ?? 'points')}"/>`;
+    return `<mxPoint x="${p.x}" y="${p.y}"${direct && p.as ? ` as="${esc(p.as)}"` : ''}/>`;
   };
   const direct = points.filter(p => ['sourcePoint', 'targetPoint'].includes(p.as)), routes = points.filter(p => !['sourcePoint', 'targetPoint'].includes(p.as));
-  const body = `${direct.map(point).join('')}${routes.length ? `<Array as="points">${routes.map(point).join('')}</Array>` : ''}`;
+  const body = `${direct.map(p => point(p, true)).join('')}${routes.length ? `<Array as="points">${routes.map(p => point(p)).join('')}</Array>` : ''}`;
   return `<mxCell id="${esc(id)}" value="${esc(value)}" style="${esc(style)}" edge="1" parent="${esc(parent)}" source="${esc(source)}" target="${esc(target)}"><mxGeometry relative="${geometry?.relative ?? 1}" as="geometry">${body}</mxGeometry></mxCell>`;
+}
+const portStyle = (port, end) => {
+  if (!port) return '';
+  const side = { north: [0.5, 0], east: [1, 0.5], south: [0.5, 1], west: [0, 0.5] }[port.side];
+  if (!side || !Number.isFinite(port.offset) || port.offset < 0 || port.offset > 1) throw new DiagramInputError(`Invalid ${end} edge port`, [diagnostic('error', 'PORT_INVALID', `$cell.ports.${end}`, 'Expected side north/east/south/west and normalized offset in [0,1]', port)]);
+  const x = port.side === 'east' ? 1 : port.side === 'west' ? 0 : port.offset, y = port.side === 'north' ? 0 : port.side === 'south' ? 1 : port.offset;
+  return `${end === 'source' ? 'exit' : 'entry'}X=${x};${end === 'source' ? 'exit' : 'entry'}Y=${y};${end === 'source' ? 'exit' : 'entry'}Dx=0;${end === 'source' ? 'exit' : 'entry'}Dy=0;${end === 'source' ? 'exit' : 'entry'}Perimeter=1;`;
+};
+export function serializeCells(cells) {
+  if (!Array.isArray(cells)) throw new DiagramInputError('cells must be an array', [diagnostic('error', 'CELLS_ARRAY', '$cells', 'Expected an array')]);
+  const models = new Map(cells.filter(cell => isObject(cell)).map(cell => [cell.id, cell]));
+  const origins = new Map();
+  const parentOrigin = (id, active = new Set()) => {
+    if (!id || id === '0' || id === '1' || !models.has(id)) return { x: 0, y: 0 };
+    if (origins.has(id)) return origins.get(id);
+    if (active.has(id)) throw new DiagramInputError(`Parent cycle at ${id}`, [diagnostic('error', 'PARENT_CYCLE', `$cells.${id}.parent`, 'Cell parents must be acyclic', id)]);
+    active.add(id);
+    const cell = models.get(id), p = parentOrigin(cell.parent, active), g = cell.geometry ?? {};
+    const origin = cell.kind === 'vertex' ? { x: p.x + numCoord(g.x), y: p.y + numCoord(g.y) } : p;
+    active.delete(id); origins.set(id, origin); return origin;
+  };
+  const numCoord = value => { const n = Number(value); if (!Number.isFinite(n)) throw new DiagramInputError('Cell geometry coordinates must be finite', [diagnostic('error', 'GEOMETRY_FINITE', '$cells.geometry', 'Expected finite coordinates', value)]); return n; };
+  return cells.map((cell, index) => {
+    if (typeof cell === 'string') return cell;
+    if (!isObject(cell) || typeof cell.id !== 'string' || !cell.id) throw new DiagramInputError(`cells[${index}] requires an ID`, [diagnostic('error', 'CELL_ID', `$cells[${index}].id`, 'Expected a nonempty string')]);
+    if (cell.kind === 'vertex') {
+      const g = cell.geometry ?? {};
+      return vertex(cell.id, cell.value ?? '', cell.style ?? '', g.x, g.y, g.width, g.height, cell.parent ?? '1');
+    }
+    if (cell.kind === 'edge') {
+      const g = cell.geometry ?? {}, ports = cell.ports ?? {};
+      const baseStyle = String(cell.style ?? ''), separator = baseStyle && !baseStyle.endsWith(';') ? ';' : '';
+      const style = `${baseStyle}${separator}${portStyle(ports.source, 'source')}${portStyle(ports.target, 'target')}`;
+      const origin = parentOrigin(cell.parent), local = point => ({ ...point, x: numCoord(point.x) - origin.x, y: numCoord(point.y) - origin.y });
+      const points = [...(g.sourcePoint ? [{ ...local(g.sourcePoint), as: 'sourcePoint' }] : []), ...(g.targetPoint ? [{ ...local(g.targetPoint), as: 'targetPoint' }] : []), ...(g.points ?? []).map(local)];
+      return edge(cell.id, cell.source, cell.target, cell.value ?? '', style, cell.parent ?? '1', { relative: g.relative ?? 1, points });
+    }
+    throw new DiagramInputError(`cells[${index}].kind must be vertex or edge`, [diagnostic('error', 'CELL_KIND', `$cells[${index}].kind`, 'Expected vertex or edge', cell.kind)]);
+  });
 }
 export function docXml(title, cells, page = { width: 1200, height: 800 }) { const size = validatePage(page); return `<?xml version="1.0" encoding="UTF-8"?><mxfile host="app.diagrams.net" type="device"><diagram id="diagram1" name="${esc(title)}"><mxGraphModel page="1" pageWidth="${size.width}" pageHeight="${size.height}" grid="1" gridSize="10"><root><mxCell id="0"/><mxCell id="1" parent="0"/>${cells.join('')}</root></mxGraphModel></diagram></mxfile>`; }
 export function writeOut(out, xml) { fs.mkdirSync(path.dirname(path.resolve(out)), { recursive: true }); fs.writeFileSync(out, xml, 'utf8'); }
@@ -165,10 +209,14 @@ export function renderGeneric(data) {
   return data.elements.map(el => {
     const a = el.attrs, g = el.geometry;
     if (el.edge) {
-      const points = Array.isArray(g.points) ? g.points : [];
-      const point = p => { if (!isObject(p) || !Number.isFinite(p.x) || !Number.isFinite(p.y)) throw new DiagramInputError('Edge points require finite x and y', [diagnostic('error', 'POINT_GEOMETRY', '$.elements.geometry.points', 'Expected finite x and y', p)]); return `<mxPoint x="${p.x}" y="${p.y}" as="${esc(p.as ?? 'points')}"/>`; };
+      const points = [
+        ...(g.sourcePoint ? [{ ...g.sourcePoint, as: 'sourcePoint' }] : []),
+        ...(g.targetPoint ? [{ ...g.targetPoint, as: 'targetPoint' }] : []),
+        ...(Array.isArray(g.points) ? g.points : [])
+      ];
+      const point = (p, direct = false) => { if (!isObject(p) || !Number.isFinite(p.x) || !Number.isFinite(p.y)) throw new DiagramInputError('Edge points require finite x and y', [diagnostic('error', 'POINT_GEOMETRY', '$.elements.geometry.points', 'Expected finite x and y', p)]); return `<mxPoint x="${p.x}" y="${p.y}"${direct && p.as ? ` as="${esc(p.as)}"` : ''}/>`; };
       const direct = points.filter(p => p.as === 'sourcePoint' || p.as === 'targetPoint'), routes = points.filter(p => !['sourcePoint', 'targetPoint'].includes(p.as));
-      return `<mxCell id="${esc(a.id)}" value="${esc(a.value ?? '')}" style="${esc(a.style ?? '')}" edge="1" parent="${esc(a.parent ?? '1')}" source="${esc(a.source)}" target="${esc(a.target)}"><mxGeometry relative="${g.relative ?? 1}" as="geometry">${direct.map(point).join('')}${routes.length ? `<Array as="points">${routes.map(point).join('')}</Array>` : ''}</mxGeometry></mxCell>`;
+      return `<mxCell id="${esc(a.id)}" value="${esc(a.value ?? '')}" style="${esc(a.style ?? '')}" edge="1" parent="${esc(a.parent ?? '1')}" source="${esc(a.source)}" target="${esc(a.target)}"><mxGeometry relative="${g.relative ?? 1}" as="geometry">${direct.map(p => point(p, true)).join('')}${routes.length ? `<Array as="points">${routes.map(p => point(p)).join('')}</Array>` : ''}</mxGeometry></mxCell>`;
     }
     return vertex(a.id, a.value ?? '', a.style ?? '', g.x ?? 0, g.y ?? 0, g.width, g.height, a.parent ?? '1');
   });

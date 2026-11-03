@@ -1,0 +1,20 @@
+{
+  "type": "class",
+  "title": "UML relation notation regression",
+  "classes": [
+    { "id": "IRepository", "kind": "interface", "attributes": [{ "name": "count", "type": "number", "visibility": "public" }], "operations": [{ "name": "find", "visibility": "public", "parameters": [{ "name": "id", "type": "string" }], "returnType": "Record | undefined" }] },
+    { "id": "BaseService", "kind": "class", "isAbstract": true, "attributes": [{ "name": "repository", "type": "IRepository", "visibility": "protected" }], "operations": [{ "name": "findById", "visibility": "protected", "parameters": [{ "name": "id", "type": "string" }], "returnType": "Record | undefined" }] },
+    { "id": "WorkoutService", "kind": "class", "attributes": [{ "name": "repository", "type": "IRepository", "visibility": "private" }], "operations": [{ "name": "create", "visibility": "public", "parameters": [{ "name": "input", "type": "CreateWorkoutInput" }, { "name": "ownerId", "type": "string" }], "returnType": "Promise<Workout>" }] },
+    { "id": "Workout", "kind": "class", "attributes": [{ "name": "id", "type": "string", "visibility": "public" }, { "name": "exercises", "type": "WorkoutExercise[]", "visibility": "private" }], "operations": [] },
+    { "id": "WorkoutExercise", "kind": "class", "attributes": [{ "name": "reps", "type": "number", "visibility": "public" }], "operations": [] },
+    { "id": "WorkoutFactory", "kind": "class", "attributes": [], "operations": [{ "name": "create", "visibility": "public", "parameters": [{ "name": "input", "type": "CreateWorkoutInput" }], "returnType": "Workout" }] }
+  ],
+  "relationships": [
+    { "id": "realization", "type": "realization", "from": "WorkoutService", "to": "IRepository", "label": "implements" },
+    { "id": "generalization", "type": "generalization", "from": "WorkoutService", "to": "BaseService", "label": "extends" },
+    { "id": "association", "type": "association", "from": "WorkoutService", "to": "Workout", "sourceRole": "creator", "targetRole": "workouts", "sourceMultiplicity": "1", "targetMultiplicity": "0..*" },
+    { "id": "dependency", "type": "dependency", "from": "WorkoutFactory", "to": "WorkoutService", "label": "creates" },
+    { "id": "aggregation", "type": "aggregation", "from": "Workout", "to": "WorkoutExercise", "sourceMultiplicity": "1", "targetMultiplicity": "0..*" },
+    { "id": "composition", "type": "composition", "from": "Workout", "to": "WorkoutExercise", "sourceRole": "owner", "targetRole": "items", "sourceMultiplicity": "1", "targetMultiplicity": "1..*" }
+  ]
+}

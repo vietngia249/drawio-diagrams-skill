@@ -1,0 +1,17 @@
+{
+  "type": "dfd",
+  "title": "DFD parallel and reverse route stress",
+  "level": 1,
+  "perspective": "logical",
+  "page": { "width": 1200, "height": 600 },
+  "nodes": [
+    { "id": "athlete", "kind": "externalEntity", "label": "Athlete" },
+    { "id": "record", "kind": "process", "label": "1. Record workout" }
+  ],
+  "flows": [
+    { "id": "progress-a", "from": "athlete", "to": "record" },
+    { "id": "progress-b", "from": "athlete", "to": "record" },
+    { "id": "summary-a", "from": "record", "to": "athlete" },
+    { "id": "summary-b", "from": "record", "to": "athlete" }
+  ]
+}
