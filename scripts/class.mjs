@@ -1,4 +1,4 @@
-import { DiagramInputError, htmlText, textWidth } from './common.mjs';
+import { DiagramInputError, htmlText, spacingFor, styleForRole, textWidth } from './common.mjs';
 import { routeOrthogonalEdges } from './geometry.mjs';
 
 const RELATION_TYPES = new Set(['association', 'dependency', 'generalization', 'aggregation', 'composition', 'realization']);
@@ -57,8 +57,7 @@ function normalizeClasses(data) {
   return models;
 }
 
-function memberWidth(models, style) {
-  const font = Number(style.fontSize ?? 13);
+function memberWidth(models, font) {
   const wrapLine = (value, maxWidth) => {
     const words = String(value).split(/\s+/), lines = [];
     let line = '';
@@ -121,8 +120,27 @@ function segmentHitsBox(a, b, box) {
 }
 
 export function renderClass(data, styles = {}) {
-  const style = styles.class ?? {}, fontSize = Number(style.fontSize ?? 13), strokeColor = style.strokeColor ?? '#000000', fillColor = style.fillColor ?? '#ffffff';
-  const normalized = normalizeClasses(data), classes = memberWidth(normalized, style);
+  const style = styles.class ?? {}, configuredTokens = styles.presentation ?? style.presentation ?? {};
+  const fontSize = Number(style.fontSize ?? configuredTokens.fontSizes?.body ?? 13);
+  const labelFont = Number(style.fontSize ?? configuredTokens.fontSizes?.label ?? fontSize);
+  const strokeColor = style.strokeColor ?? configuredTokens.colors?.stroke ?? '#000000';
+  const fillColor = style.fillColor ?? configuredTokens.colors?.fill ?? '#ffffff';
+  const presentation = {
+    ...configuredTokens,
+    fontFamily: style.fontFamily ?? configuredTokens.fontFamily ?? 'Arial,Helvetica,sans-serif',
+    fontSizes: {
+      ...configuredTokens.fontSizes,
+      title: style.fontSize ?? configuredTokens.fontSizes?.title ?? fontSize,
+      heading: style.fontSize ?? configuredTokens.fontSizes?.heading ?? fontSize,
+      body: fontSize,
+      label: labelFont,
+      small: style.fontSize ?? configuredTokens.fontSizes?.small ?? fontSize
+    },
+    colors: { ...configuredTokens.colors, stroke: strokeColor, mutedStroke: style.strokeColor ?? configuredTokens.colors?.mutedStroke ?? strokeColor, fill: fillColor }
+  };
+  const nodeGap = Math.max(72, spacingFor('nodeGap', presentation));
+  const routeClearance = Math.max(18, spacingFor('routeClearance', presentation));
+  const normalized = normalizeClasses(data), classes = memberWidth(normalized, fontSize);
   const keyMap = new Map(classes.map(model => [model.key, model]));
   const names = new Map();
   for (const model of classes) {
@@ -153,11 +171,11 @@ export function renderClass(data, styles = {}) {
       const a = indexFor(resolveClass(relation.from)), b = indexFor(resolveClass(relation.to));
       return a >= 0 && b >= 0 && a !== b && Math.min(a, b) <= boundary && Math.max(a, b) > boundary;
     });
-    const maxLabel = Math.max(0, ...crossing.map(relation => relation.label ? textWidth(relation.label, fontSize) : 0));
+    const maxLabel = Math.max(0, ...crossing.map(relation => relation.label ? textWidth(relation.label, labelFont) : 0));
     return 42 + crossing.length * 18 + Math.min(150, maxLabel);
   };
-  const colGaps = Array.from({ length: Math.max(0, cols - 1) }, (_, boundary) => Math.max(72, edgeDemand('x', boundary)));
-  const rowGaps = Array.from({ length: Math.max(0, rows - 1) }, (_, boundary) => Math.max(72, edgeDemand('y', boundary)));
+  const colGaps = Array.from({ length: Math.max(0, cols - 1) }, (_, boundary) => Math.max(nodeGap, edgeDemand('x', boundary)));
+  const rowGaps = Array.from({ length: Math.max(0, rows - 1) }, (_, boundary) => Math.max(nodeGap, edgeDemand('y', boundary)));
   const colX = [], rowY = [];
   for (let col = 0; col < cols; col++) colX[col] = 72 + colWidths.slice(0, col).reduce((sum, width, index) => sum + width + colGaps[index], 0);
   for (let row = 0; row < rows; row++) rowY[row] = 72 + rowHeights.slice(0, row).reduce((sum, height, index) => sum + height + rowGaps[index], 0);
@@ -166,9 +184,9 @@ export function renderClass(data, styles = {}) {
   const inferredPage = { width: Math.ceil((colX.at(-1) ?? 0) + colWidths.at(-1) + pageMargin), height: Math.ceil((rowY.at(-1) ?? 0) + rowHeights.at(-1) + pageMargin) };
   const basePage = { width: Math.max(inferredPage.width, data.page?.width ?? 0), height: Math.max(inferredPage.height, data.page?.height ?? 0) };
   const cells = [], obstacles = [];
-  const classStyle = `swimlane;horizontal=1;startSize=42;html=1;whiteSpace=wrap;align=center;verticalAlign=middle;fontFamily=${style.fontFamily ?? 'Arial,Helvetica,sans-serif'};fontSize=${fontSize};fontStyle=1;fillColor=${fillColor};strokeColor=${strokeColor};strokeWidth=1;container=1;collapsible=0;recursiveResize=0;`;
-  const compartmentStyle = `text;html=1;whiteSpace=wrap;align=left;verticalAlign=top;spacing=5;fontFamily=${style.fontFamily ?? 'Arial,Helvetica,sans-serif'};fontSize=${fontSize};fillColor=none;strokeColor=none;`;
-  const separatorStyle = `line;html=1;strokeColor=${strokeColor};strokeWidth=1;fillColor=none;align=left;verticalAlign=middle;spacingTop=-1;spacingLeft=3;spacingRight=10;rotatable=0;labelPosition=left;points=[];portConstraint=eastwest;`;
+  const classStyle = styleForRole('container', presentation, 'swimlane;horizontal=1;startSize=42;html=1;whiteSpace=wrap;align=center;verticalAlign=middle;fontStyle=1;container=1;collapsible=0;recursiveResize=0;');
+  const compartmentStyle = styleForRole('body', presentation, 'text;html=1;whiteSpace=wrap;align=left;verticalAlign=top;spacing=5;');
+  const separatorStyle = styleForRole('edge', presentation, 'line;fillColor=none;align=left;verticalAlign=middle;spacingTop=-1;spacingLeft=3;spacingRight=10;rotatable=0;labelPosition=left;points=[];portConstraint=eastwest;');
   const classById = new Map();
   for (const model of classes) {
     const header = model.stereotype ? `&lt;&lt;${model.stereotype}&gt;&gt;<br>${htmlText(model.displayName)}` : htmlText(model.displayName);
@@ -185,9 +203,9 @@ export function renderClass(data, styles = {}) {
   const edges = relationships.map((relation, index) => {
     const id = relation.id ?? `relation_${index}`, source = classById.get(relation.from), target = classById.get(relation.to);
     const sourceSide = pointSide(source, target, 'east'), targetSide = pointSide(target, source, 'west');
-    return { id, relation, source, target, request: { id, allowSelfLoop: source === target, source: { nodeId: source.id, port: { side: sourceSide } }, target: { nodeId: target.id, port: { side: targetSide } }, ...(relation.label ? { label: { id: `${id}_label`, width: Math.min(180, textWidth(relation.label, fontSize) + 16), height: Math.max(22, Math.ceil(fontSize * 1.6)) } } : {}) } };
+    return { id, relation, source, target, request: { id, allowSelfLoop: source === target, source: { nodeId: source.id, port: { side: sourceSide } }, target: { nodeId: target.id, port: { side: targetSide } }, ...(relation.label ? { label: { id: `${id}_label`, width: Math.min(180, textWidth(relation.label, labelFont) + 16), height: Math.max(22, Math.ceil(labelFont * 1.6)) } } : {}) } };
   });
-  const routed = routeOrthogonalEdges({ obstacles, edges: edges.map(item => item.request), page: basePage, clearance: 18 });
+  const routed = routeOrthogonalEdges({ obstacles, edges: edges.map(item => item.request), page: basePage, clearance: routeClearance });
   const routeErrors = routed.diagnostics.filter(diagnostic => diagnostic.severity === 'error');
   if (routeErrors.length) throw new DiagramInputError('Class relationship route planning failed', routeErrors);
   const routes = new Map(routed.routes.map(route => [route.edgeId, route]));
@@ -195,12 +213,12 @@ export function renderClass(data, styles = {}) {
   for (const item of edges) {
     const { id, relation } = item, route = routes.get(id);
     if (!route) throw issue('CLASS_ROUTE_MISSING', `$.relationships.${id}`, 'route planner did not return a route');
-    const style = relationStyle(relation.type, strokeColor);
+    const style = styleForRole('edge', presentation, relationStyle(relation.type, strokeColor));
     cells.push({ kind: 'edge', id, value: '', style, parent: '1', source: item.source.id, target: item.target.id,
       ports: { source: { side: route.sourcePort.side, offset: route.sourcePort.offset }, target: { side: route.targetPort.side, offset: route.targetPort.offset } }, geometry: { relative: 1, points: route.points } });
     const points = [route.sourcePort.point, ...route.points, route.targetPort.point];
     routeSegments.set(id, points.slice(1).map((point, index) => [points[index], point]));
-    if (route.label) cells.push({ kind: 'vertex', id: route.label.id, value: htmlText(relation.label), style: `shape=rect;html=1;whiteSpace=wrap;align=center;verticalAlign=middle;fontSize=${fontSize};fillColor=#ffffff;strokeColor=none;`, parent: '1', geometry: route.label.bounds });
+    if (route.label) cells.push({ kind: 'vertex', id: route.label.id, value: htmlText(relation.label), style: styleForRole('label', presentation, 'shape=rect;html=1;whiteSpace=wrap;align=center;verticalAlign=middle;'), parent: '1', geometry: route.label.bounds });
   }
 
   const placedRoleLabels = [];
@@ -210,7 +228,7 @@ export function renderClass(data, styles = {}) {
       const role = valueLabel(item.relation, `${end}Role`), multiplicity = valueLabel(item.relation, `${end}Multiplicity`);
       const label = [multiplicity, role].filter(Boolean).join('\n');
       if (!label) continue;
-      const port = route[`${end}Port`], candidates = roleLabelBoxes(port, label, fontSize);
+      const port = route[`${end}Port`], candidates = roleLabelBoxes(port, label, labelFont);
       const otherNodes = obstacles.filter(obstacle => obstacle.id !== port.nodeId);
       const allSegments = [...routeSegments.values()].flat();
       const bounds = candidates.find(candidate => candidate.x >= 0 && candidate.y >= 0 && candidate.x + candidate.width <= basePage.width && candidate.y + candidate.height <= basePage.height
@@ -218,7 +236,7 @@ export function renderClass(data, styles = {}) {
         && !allSegments.some(([a, b]) => segmentHitsBox(a, b, candidate))
         && !placedRoleLabels.some(other => overlaps(candidate, other, 2)));
       if (!bounds) throw issue('CLASS_ROLE_LABEL_COLLISION', `$.relationships.${item.id}.${end}Role`, 'no clear placement is available for the role or multiplicity label', label);
-      cells.push({ kind: 'vertex', id: `${item.id}_${end}_role`, value: htmlText(label), style: `shape=rect;rounded=0;html=1;whiteSpace=wrap;align=center;verticalAlign=middle;fontFamily=${style.fontFamily ?? 'Arial,Helvetica,sans-serif'};fontSize=${fontSize};fillColor=#ffffff;strokeColor=none;spacing=2;`, parent: '1', geometry: bounds });
+      cells.push({ kind: 'vertex', id: `${item.id}_${end}_role`, value: htmlText(label), style: styleForRole('label', presentation, 'shape=rect;rounded=0;html=1;whiteSpace=wrap;align=center;verticalAlign=middle;spacing=2;'), parent: '1', geometry: bounds });
       placedRoleLabels.push(bounds);
     }
   }

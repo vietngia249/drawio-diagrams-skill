@@ -1,4 +1,4 @@
-import { DiagramInputError, htmlText, textWidth } from './common.mjs';
+import { DiagramInputError, htmlText, spacingFor, styleForRole, textWidth } from './common.mjs';
 import { routeOrthogonalEdges } from './geometry.mjs';
 
 const CARDINALITY_ARROW = Object.freeze({
@@ -40,8 +40,7 @@ function textBox(text, fontSize, minWidth = 0, maxWidth = 460) {
   return { width, height: Math.max(36, lines * Math.max(18, fontSize * 1.65) + 8) };
 }
 
-function layoutEntities(entities, attrsByName, style, portCounts, relations, requestedPage) {
-  const fontSize = Number(style.fontSize ?? 14), attrFont = Number(style.attribute?.fontSize ?? fontSize);
+function layoutEntities(entities, attrsByName, style, portCounts, relations, requestedPage, fontSize, attrFont, relationFont, nodeGap) {
   const markerLabels = { PK: String(style.primaryKey?.marker ?? 'PK'), FK: String(style.foreignKey?.marker ?? 'FK') };
   const layout = entities.map(entity => {
     const header = textBox(entity.name, fontSize, 200);
@@ -66,16 +65,16 @@ function layoutEntities(entities, attrsByName, style, portCounts, relations, req
       const a = start(relation), b = end(relation);
       return a !== undefined && b !== undefined && Math.min(a, b) <= boundary && Math.max(a, b) > boundary;
     });
-    const labels = crossing.map(relation => relation.name ? textBox(String(relation.name), Number(style.relation?.fontSize ?? fontSize), 70, 190) : { width: 0, height: 0 });
+    const labels = crossing.map(relation => relation.name ? textBox(String(relation.name), relationFont, 70, 190) : { width: 0, height: 0 });
     return { lanes: crossing.length, labelWidth: Math.max(0, ...labels.map(label => label.width)), labelHeight: Math.max(0, ...labels.map(label => label.height)) };
   };
   const xGaps = Array.from({ length: Math.max(0, cols - 1) }, (_, boundary) => {
     const demand = routeDemand('x', boundary);
-    return Math.max(72, 56 + demand.lanes * 56 + demand.labelWidth);
+    return Math.max(72, nodeGap, 56 + demand.lanes * 56 + demand.labelWidth);
   });
   const yGaps = Array.from({ length: Math.max(0, rows - 1) }, (_, boundary) => {
     const demand = routeDemand('y', boundary);
-    return Math.max(72, 56 + demand.lanes * 56 + demand.labelHeight);
+    return Math.max(72, nodeGap, 56 + demand.lanes * 56 + demand.labelHeight);
   });
   const gapX = requestedPage && cols > 1
     ? Math.max(Math.max(...xGaps), (requestedPage.width - 160 - colWidths.reduce((sum, value) => sum + value, 0)) / (cols - 1))
@@ -87,7 +86,7 @@ function layoutEntities(entities, attrsByName, style, portCounts, relations, req
   for (let col = 0; col < cols; col++) colX[col] = 80 + colWidths.slice(0, col).reduce((sum, value, index) => sum + value + (gapX ?? xGaps[index]), 0);
   for (let row = 0; row < rows; row++) rowY[row] = 80 + rowHeights.slice(0, row).reduce((sum, value, index) => sum + value + (gapY ?? yGaps[index]), 0);
   for (const [i, item] of layout.entries()) { item.x = colX[i % cols]; item.y = rowY[Math.floor(i / cols)]; }
-  const longestLabel = Math.max(0, ...relations.map(relation => relation.name ? textBox(String(relation.name), Number(style.relation?.fontSize ?? fontSize), 70, 190).width : 0));
+  const longestLabel = Math.max(0, ...relations.map(relation => relation.name ? textBox(String(relation.name), relationFont, 70, 190).width : 0));
   const margin = 56 + longestLabel + relations.length * 12;
   return { layout, page: { width: Math.ceil((colX.at(-1) ?? 0) + (colWidths.at(-1) ?? 0) + margin), height: Math.ceil((rowY.at(-1) ?? 0) + (rowHeights.at(-1) ?? 0) + margin) } };
 }
@@ -180,15 +179,32 @@ export function renderErd(data, styles = {}) {
     }
   }
 
-  const style = styles.erd ?? {}, fontSize = Number(style.fontSize ?? 14), attrFont = Number(style.attribute?.fontSize ?? fontSize);
-  const { layout, page: inferredPage } = layoutEntities(entities, attrsByName, style, portCounts, relations, data.page);
+  const style = styles.erd ?? {}, configuredTokens = styles.presentation ?? style.presentation ?? {};
+  const fontSize = Number(style.fontSize ?? configuredTokens.fontSizes?.body ?? 14);
+  const attrFont = Number(style.attribute?.fontSize ?? style.fontSize ?? configuredTokens.fontSizes?.body ?? 14);
+  const relationFont = Number(style.relation?.fontSize ?? configuredTokens.fontSizes?.label ?? fontSize);
+  const entityStroke = style.entity?.strokeColor ?? configuredTokens.colors?.stroke ?? '#000000';
+  const sharedFill = configuredTokens.colors?.fill ?? '#ffffff';
+  const entityFill = style.entity?.fillColor ?? sharedFill;
+  const entityStrokeWidth = Number(style.entity?.strokeWidth ?? configuredTokens.strokeWidth ?? 1);
+  const relationStroke = style.relation?.strokeColor ?? configuredTokens.colors?.stroke ?? '#000000';
+  const relationStrokeWidth = Number(style.relation?.strokeWidth ?? configuredTokens.strokeWidth ?? 1);
+  const presentation = {
+    ...configuredTokens,
+    fontFamily: style.fontFamily ?? configuredTokens.fontFamily ?? 'Arial,Helvetica,sans-serif',
+    fontSizes: { ...configuredTokens.fontSizes, body: fontSize, label: relationFont },
+    colors: { ...configuredTokens.colors, stroke: relationStroke, fill: sharedFill }
+  };
+  const nodeGap = spacingFor('nodeGap', presentation), routeClearance = spacingFor('routeClearance', presentation);
+  const { layout, page: inferredPage } = layoutEntities(entities, attrsByName, style, portCounts, relations, data.page, fontSize, attrFont, relationFont, nodeGap);
   const cells = [], obstacles = [], byName = new Map(), attrRows = new Map();
-  const entityStroke = style.entity?.strokeColor ?? '#000000', strokeWidth = style.entity?.strokeWidth ?? 1;
-  const common = `rounded=0;html=1;whiteSpace=wrap;align=left;verticalAlign=middle;spacingLeft=8;spacingTop=4;spacingBottom=4;fontFamily=${style.fontFamily ?? 'Arial,Helvetica,sans-serif'};fillColor=#ffffff;strokeColor=${entityStroke};strokeWidth=${strokeWidth};`;
+  const entityTokens = { ...presentation, colors: { ...presentation.colors, stroke: entityStroke, fill: entityFill }, strokeWidth: entityStrokeWidth };
+  const rowBase = 'rounded=0;html=1;whiteSpace=wrap;align=left;verticalAlign=middle;spacingLeft=8;spacingTop=4;spacingBottom=4;';
+  const headerBase = 'rounded=0;html=1;whiteSpace=wrap;align=left;verticalAlign=middle;spacingLeft=8;spacingTop=4;spacingBottom=4;fontStyle=1;';
   for (const item of layout) {
     const headerHeight = item.header.height, width = item.width;
     const headGeometry = { x: item.x, y: item.y, width, height: headerHeight };
-    const headerCell = { kind: 'vertex', id: `${item.id}_header`, value: htmlText(item.name), style: `${common}fontSize=${fontSize};fontStyle=1;fillColor=${style.entity?.fillColor ?? '#ffffff'};`, parent: '1', geometry: headGeometry };
+    const headerCell = { kind: 'vertex', id: `${item.id}_header`, value: htmlText(item.name), style: styleForRole('node', entityTokens, headerBase), parent: '1', geometry: headGeometry };
     cells.push(headerCell); obstacles.push({ id: headerCell.id, kind: 'node', bounds: boundsOf(headGeometry) });
     const entry = { x: item.x, y: item.y, width, height: item.height, headerCell };
     byName.set(item.name, entry);
@@ -196,7 +212,8 @@ export function renderErd(data, styles = {}) {
     for (const [index, attr] of item.rows.entries()) {
       const height = attr.measure.height;
       const geometry = { x: item.x, y, width, height };
-      const cell = { kind: 'vertex', id: `${item.id}_attr_${index}`, value: htmlText(attr.label), style: `${common}fontSize=${attrFont};`, parent: '1', geometry };
+      const rowTokens = { ...entityTokens, fontSizes: { ...entityTokens.fontSizes, body: attrFont }, colors: { ...entityTokens.colors, fill: sharedFill } };
+      const cell = { kind: 'vertex', id: `${item.id}_attr_${index}`, value: htmlText(attr.label), style: styleForRole('node', rowTokens, rowBase), parent: '1', geometry };
       cells.push(cell); obstacles.push({ id: cell.id, kind: 'node', bounds: boundsOf(geometry) });
       if (!attrMap.has(attr.name)) attrMap.set(attr.name, []);
       attrMap.get(attr.name).push(cell);
@@ -217,11 +234,11 @@ export function renderErd(data, styles = {}) {
     relationRecords.push({ id, index, relation, source, target, sourceEntity, targetEntity, sourceSide, targetSide });
   }
   const maxX = Math.max(0, ...layout.map(item => item.x + item.width)), maxY = Math.max(0, ...layout.map(item => item.y + item.height));
-  const longestLabel = Math.max(0, ...relations.map(relation => relation.name ? textBox(String(relation.name), Number(style.relation?.fontSize ?? fontSize), 70, 190).width : 0));
+  const longestLabel = Math.max(0, ...relations.map(relation => relation.name ? textBox(String(relation.name), relationFont, 70, 190).width : 0));
   const routeMargin = 56 + longestLabel + relations.length * 12;
   const basePage = { width: Math.max(inferredPage.width, maxX + routeMargin, data.page?.width ?? 0), height: Math.max(inferredPage.height, maxY + routeMargin, data.page?.height ?? 0) };
-  const relationStrokeWidth = Number(style.relation?.strokeWidth ?? 1), minimumRouteGap = relationStrokeWidth + 4;
-  const clearance = 14, routeClearance = 2, portGroups = new Map();
+  const minimumRouteGap = relationStrokeWidth + 4;
+  const clearance = routeClearance + 2, portGroups = new Map();
   for (const record of relationRecords) for (const end of ['source', 'target']) {
     const cell = record[end], side = record[`${end}Side`], key = `${cell.id}\0${side}`;
     if (!portGroups.has(key)) portGroups.set(key, []);
@@ -267,12 +284,13 @@ export function renderErd(data, styles = {}) {
     const record = recordByRouteId.get(route.edgeId);
     return [record.id, { ...route, sourcePort: record.sourcePort, targetPort: record.targetPort, points: [route.sourcePort.point, ...route.points, route.targetPort.point] }];
   }));
-  const edgeStyleBase = `edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;jettySize=auto;strokeColor=${style.relation?.strokeColor ?? '#000000'};strokeWidth=${relationStrokeWidth};`;
+  const edgeTokens = { ...presentation, fontSizes: { ...presentation.fontSizes, label: relationFont }, colors: { ...presentation.colors, stroke: relationStroke }, strokeWidth: relationStrokeWidth };
+  const edgeStyleBase = styleForRole('edge', edgeTokens, 'edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;jettySize=auto;');
   const placedLabels = [], routeLabels = new Map();
   for (const record of relationRecords) {
     if (!record.relation.name) continue;
-    const route = routeById.get(record.id), label = { id: `rel_label_${record.index}`, ...textBox(String(record.relation.name), Number(style.relation?.fontSize ?? fontSize), 70, 190) };
-    const bounds = placeRelationLabel(route, label, obstacles, [...routeById.values()], placedLabels, basePage, 14);
+    const route = routeById.get(record.id), label = { id: `rel_label_${record.index}`, ...textBox(String(record.relation.name), relationFont, 70, 190) };
+    const bounds = placeRelationLabel(route, label, obstacles, [...routeById.values()], placedLabels, basePage, clearance);
     if (!bounds) throw error('ERD_LABEL_ROUTE_UNAVAILABLE', `$.relations[${record.index}].name`, 'no clear page-space position is available for the relation label', record.relation.name);
     placedLabels.push(bounds); routeLabels.set(record.id, { id: label.id, bounds });
   }
@@ -286,7 +304,7 @@ export function renderErd(data, styles = {}) {
       geometry: { relative: 1, points: route.points } });
     const label = routeLabels.get(id);
     if (label) {
-      cells.push({ kind: 'vertex', id: label.id, value: htmlText(String(relation.name)), style: `shape=rect;rounded=0;html=1;whiteSpace=wrap;align=center;verticalAlign=middle;fontFamily=${style.fontFamily ?? 'Arial,Helvetica,sans-serif'};fontSize=${style.relation?.fontSize ?? fontSize};fillColor=#ffffff;strokeColor=none;spacing=2;`, parent: '1', geometry: { ...label.bounds } });
+      cells.push({ kind: 'vertex', id: label.id, value: htmlText(String(relation.name)), style: styleForRole('label', edgeTokens, 'shape=rect;rounded=0;html=1;whiteSpace=wrap;align=center;verticalAlign=middle;spacing=2;'), parent: '1', geometry: { ...label.bounds } });
     }
   }
   const allBounds = cells.filter(cell => cell.kind === 'vertex' && cell.parent === '1').map(cell => cell.geometry);

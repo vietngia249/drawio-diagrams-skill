@@ -6,6 +6,7 @@ import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { cellsFromModel, parseDrawioText } from '../scripts/drawio_xml.mjs';
+import { renderClass } from '../scripts/class.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const fixtureRoot = path.join(root, 'tests/fixtures/erd-class');
@@ -15,6 +16,14 @@ test.after(() => fs.rmSync(temp, { recursive: true, force: true }));
 function render(inputName, outputName = `${path.basename(inputName, '.json')}.drawio`) {
   const input = path.join(fixtureRoot, inputName), output = path.join(temp, outputName);
   const result = spawnSync(process.execPath, ['scripts/render_drawio.mjs', input, '-o', output], { cwd: root, encoding: 'utf8' });
+  assert.equal(result.status, 0, result.stderr);
+  return { cells: cellsFromModel(parseDrawioText(fs.readFileSync(output, 'utf8')).graph), output, stdout: result.stdout };
+}
+
+function renderObject(input, outputName) {
+  const source = path.join(temp, `${outputName}.json`), output = path.join(temp, `${outputName}.drawio`);
+  fs.writeFileSync(source, JSON.stringify(input));
+  const result = spawnSync(process.execPath, ['scripts/render_drawio.mjs', source, '-o', output], { cwd: root, encoding: 'utf8' });
   assert.equal(result.status, 0, result.stderr);
   return { cells: cellsFromModel(parseDrawioText(fs.readFileSync(output, 'utf8')).graph), output, stdout: result.stdout };
 }
@@ -124,7 +133,7 @@ test('class rendering preserves typed UML compartments, visibility, parameters, 
   const labels = cells.filter(cell => cell.vertex).map(cell => text(cell.attrs.value));
   assert.ok(labels.some(value => value.includes('<<interface>>') && value.includes('IRepository')));
   assert.ok(labels.some(value => value.includes('- repository : IRepository')));
-  assert.ok(labels.some(value => value.includes('+ create(input : CreateWorkoutInput, ownerId : string) : Promise<Workout>')));
+  assert.ok(labels.some(value => value.replace(/\s+/g, ' ').includes('+ create(input : CreateWorkoutInput, ownerId : string) : Promise<Workout>')));
   const styles = cells.filter(cell => cell.edge).map(cell => cell.attrs.style);
   assert.equal(styles.length, 6);
   assert.ok(styles.some(style => /dashed=1/.test(style) && /endArrow=block/.test(style) && /endFill=0/.test(style)), 'realization has a dashed hollow generalization arrow');
@@ -179,4 +188,67 @@ test('ERD and UML class diagrams serialize different semantic node and relations
   assert.ok(uml.some(cell => cell.vertex && /<<class>>|WorkoutsService/.test(cell.attrs.value)));
   assert.ok(uml.some(cell => cell.edge && /dashed=1/.test(cell.attrs.style)));
   assert.equal(uml.some(cell => cell.vertex && /\[PK\]|\[FK\]/.test(cell.attrs.value)), false);
+});
+
+test('ERD and UML class renderers consume shared presentation tokens and keep legacy style overrides', () => {
+  const erdInput = JSON.parse(fs.readFileSync(path.join(root, 'examples/erd.json'), 'utf8'));
+  const erdBaseline = renderObject(erdInput, 'presentation-erd-baseline').cells;
+  erdInput.style = {
+    presentation: { fontSizes: { body: 18, label: 18 }, colors: { stroke: '#123456' }, spacing: { nodeGap: 240 } },
+    erd: { fontFamily: 'Verdana', fontSize: 20, entity: { strokeColor: '#765432', fillColor: '#ffeeee' }, attribute: { fontSize: 17 }, relation: { strokeColor: '#abcdef', strokeWidth: 2, fontSize: 13 } }
+  };
+  erdInput.relations[0].name = 'owns';
+  const erdCells = renderObject(erdInput, 'presentation-erd').cells;
+  const header = erdCells.find(cell => cell.vertex && cell.attrs.id.endsWith('_header'));
+  const row = erdCells.find(cell => cell.vertex && /_attr_\d+$/.test(cell.attrs.id));
+  const relation = erdCells.find(cell => cell.edge);
+  const relationLabel = erdCells.find(cell => cell.vertex && cell.attrs.id.startsWith('rel_label_'));
+  assert.match(header.attrs.style, /fontFamily=Verdana/);
+  assert.match(header.attrs.style, /fontSize=20/);
+  assert.match(header.attrs.style, /strokeColor=#765432/);
+  assert.match(header.attrs.style, /fillColor=#ffeeee/);
+  assert.match(row.attrs.style, /fontSize=17/);
+  assert.match(relation.attrs.style, /strokeColor=#abcdef/);
+  assert.match(relation.attrs.style, /strokeWidth=2/);
+  const cardinalityArrow = { '1': 'ERone', '0..1': 'ERzeroToOne', '0..*': 'ERzeroToMany', '1..*': 'ERoneToMany' };
+  for (const [side, field] of [['from', 'startArrow'], ['to', 'endArrow']]) {
+    const value = erdInput.relations[0][`${side}Cardinality`] ?? erdInput.relations[0][`${side}Multiplicity`];
+    assert.match(relation.attrs.style, new RegExp(`${field}=${value ? cardinalityArrow[value] : 'none'};`), `${side} ERD cardinality marker remains semantic`);
+  }
+  assert.match(relationLabel.attrs.style, /fontSize=13/);
+  assert.ok(erdCells.some(cell => cell.vertex && /\[PK\]/.test(text(cell.attrs.value))), 'physical table rows retain PK notation');
+  assert.ok(Math.max(...erdCells.filter(cell => cell.vertex && cell.attrs.id.endsWith('_header')).map(cell => Number(cell.geometry.x))) > Math.max(...erdBaseline.filter(cell => cell.vertex && cell.attrs.id.endsWith('_header')).map(cell => Number(cell.geometry.x))), 'nodeGap token expands ERD columns');
+
+  const classInput = JSON.parse(fs.readFileSync(path.join(root, 'examples/class.json'), 'utf8'));
+  const classBaseline = renderObject(classInput, 'presentation-class-baseline').cells;
+  classInput.style = { presentation: { fontSizes: { body: 19, heading: 19, label: 19 }, colors: { stroke: '#2468ac', mutedStroke: '#2468ac', fill: '#eef5ff' }, spacing: { nodeGap: 240 } } };
+  const classCells = renderObject(classInput, 'presentation-class').cells;
+  const classifier = classCells.find(cell => cell.vertex && !/_attributes$|_operations$|_separator$/.test(cell.attrs.id));
+  const compartment = classCells.find(cell => cell.vertex && cell.attrs.id.endsWith('_attributes'));
+  assert.match(classifier.attrs.style, /fontSize=19/);
+  assert.match(classifier.attrs.style, /strokeColor=#2468ac/);
+  assert.match(classifier.attrs.style, /fillColor=#eef5ff/);
+  assert.match(compartment.attrs.style, /fontSize=19/);
+  assert.ok(classCells.filter(cell => cell.edge).every(cell => /strokeColor=#2468ac/.test(cell.attrs.style)), 'presentation edge colors apply without replacing relationship semantics');
+  assert.ok(classCells.some(cell => cell.vertex && /WorkoutsService/.test(text(cell.attrs.value))));
+  assert.equal(classCells.some(cell => cell.vertex && /\[PK\]|\[FK\]/.test(text(cell.attrs.value))), false, 'class compartments do not adopt physical ERD key notation');
+  assert.ok(Math.max(...classCells.filter(cell => cell.vertex && !/_attributes$|_operations$|_separator$/.test(cell.attrs.id)).map(cell => Number(cell.geometry.x))) > Math.max(...classBaseline.filter(cell => cell.vertex && !/_attributes$|_operations$|_separator$/.test(cell.attrs.id)).map(cell => Number(cell.geometry.x))), 'nodeGap token expands UML classifier columns');
+
+  const classNotationInput = JSON.parse(fs.readFileSync(path.join(fixtureRoot, 'class-notation.json'), 'utf8'));
+  classNotationInput.style = { presentation: { colors: { stroke: '#2468ac' } }, class: { fontFamily: 'Tahoma', fontSize: 15, strokeColor: '#774411', fillColor: '#f0e8dc' } };
+  const notationCells = renderClass(classNotationInput, { ...classNotationInput.style, class: classNotationInput.style.class }).cells;
+  const notationEdges = notationCells.filter(cell => cell.kind === 'edge');
+  const edgeById = new Map(notationEdges.map(cell => [cell.id, cell.style]));
+  const legacyClassifier = notationCells.find(cell => cell.kind === 'vertex' && !/_attributes$|_operations$|_separator$/.test(cell.id));
+  assert.match(legacyClassifier.style, /fontFamily=Tahoma/);
+  assert.match(legacyClassifier.style, /fontSize=15/);
+  assert.match(legacyClassifier.style, /strokeColor=#774411/);
+  assert.match(legacyClassifier.style, /fillColor=#f0e8dc/);
+  assert.match(edgeById.get('association'), /startArrow=none;.*endArrow=none;/);
+  assert.match(edgeById.get('dependency'), /dashed=1;.*endArrow=open;.*startArrow=none;/);
+  assert.match(edgeById.get('generalization'), /endArrow=block;endFill=0;startArrow=none;/);
+  assert.doesNotMatch(edgeById.get('generalization'), /dashed=1/);
+  assert.match(edgeById.get('realization'), /dashed=1;endArrow=block;endFill=0;startArrow=none;/);
+  assert.match(edgeById.get('aggregation'), /startArrow=diamondThin;startFill=0;endArrow=none;/);
+  assert.match(edgeById.get('composition'), /startArrow=diamondThin;startFill=1;endArrow=none;/);
 });
