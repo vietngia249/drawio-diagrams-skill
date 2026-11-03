@@ -1,0 +1,19 @@
+{
+  "type": "usecase",
+  "title": "Explicit use-case relations",
+  "systemName": "Workout service",
+  "actors": [
+    { "id": "athlete", "label": "Athlete" }
+  ],
+  "useCases": [
+    { "id": "plans", "label": "Manage plans" },
+    { "id": "start", "label": "Start workout" },
+    { "id": "track", "label": "Track workout" },
+    { "id": "history", "label": "View history" }
+  ],
+  "relationships": [
+    { "id": "include-start-plan", "type": "include", "from": "start", "to": "plans" },
+    { "id": "extend-track-history", "type": "extend", "from": "track", "to": "history" },
+    { "id": "generalize-history-plans", "type": "generalization", "from": "history", "to": "plans" }
+  ]
+}
