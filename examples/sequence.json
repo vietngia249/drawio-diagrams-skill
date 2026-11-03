@@ -22,5 +22,14 @@
     { "kind": "return", "order": 11, "label": "WorkoutSession đã hoàn tất", "from": "svc", "to": "api" },
     { "kind": "return", "order": 12, "label": "200 JSON session", "from": "api", "to": "ui" }
   ],
-  "fragments": []
+  "fragments": [],
+  "activations": [
+    { "participant": "ui", "startOrder": 1, "startEnd": "source", "endOrder": 12, "endEnd": "target" },
+    { "participant": "api", "startOrder": 1, "startEnd": "target", "endOrder": 12, "endEnd": "source" },
+    { "participant": "svc", "startOrder": 2, "startEnd": "target", "endOrder": 11, "endEnd": "source" },
+    { "participant": "db", "startOrder": 3, "startEnd": "target", "endOrder": 4, "endEnd": "source" },
+    { "participant": "db", "startOrder": 5, "startEnd": "target", "endOrder": 6, "endEnd": "target" },
+    { "participant": "db", "startOrder": 6, "startEnd": "target", "endOrder": 7, "endEnd": "source" },
+    { "participant": "db", "startOrder": 9, "startEnd": "target", "endOrder": 10, "endEnd": "source" }
+  ]
 }

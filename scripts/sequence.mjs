@@ -308,6 +308,33 @@ export function renderSequence(data, styleConfig = {}) {
       x, headerTop, metric.width, metric.height));
   });
 
+  const messagesByOrder = new Map();
+  messageRecords.forEach(record => {
+    const order = Number(record.item.order);
+    if (record.item.order !== undefined && Number.isFinite(order)) {
+      if (messagesByOrder.has(order) && (data.activations || []).length) {
+        throw new DiagramInputError('Sequence activation boundaries require unique message orders', [{ phase: 'planned', severity: 'error', code: 'ACTIVATION_ORDER_AMBIGUOUS', path: '$.activations', message: `Message order ${order} is not unique`, value: order }]);
+      }
+      messagesByOrder.set(order, record);
+    }
+  });
+  (data.activations || []).forEach((activation, index) => {
+    const participantIndex = participantIndexes.get(String(activation.participant));
+    if (participantIndex === undefined) throw new DiagramInputError('Sequence activation participant is undeclared', [{ phase: 'planned', severity: 'error', code: 'ACTIVATION_PARTICIPANT', path: `activations[${index}].participant`, message: 'Expected a declared participant ID', value: activation.participant }]);
+    const startRecord = messagesByOrder.get(Number(activation.startOrder)), endRecord = messagesByOrder.get(Number(activation.endOrder));
+    if (!startRecord || !endRecord) throw new DiagramInputError('Sequence activation boundary message is unresolved', [{ phase: 'planned', severity: 'error', code: 'ACTIVATION_BOUNDARY', path: `activations[${index}]`, message: 'startOrder and endOrder must identify ordered messages', value: activation }]);
+    const pointAt = (record, role, field) => {
+      if (!['source', 'target'].includes(role)) throw new DiagramInputError('Sequence activation endpoint must be source or target', [{ phase: 'planned', severity: 'error', code: 'ACTIVATION_ENDPOINT', path: `activations[${index}].${field}`, message: 'Expected source or target', value: role }]);
+      const item = record.item, endpointParticipant = role === 'source' ? item.from : item.to;
+      if (String(endpointParticipant) !== String(activation.participant)) throw new DiagramInputError('Sequence activation boundary is on another participant', [{ phase: 'planned', severity: 'error', code: 'ACTIVATION_ENDPOINT_PARTICIPANT', path: `activations[${index}].${field}`, message: `Message ${record.item.order} ${role} endpoint does not match activation participant`, value: endpointParticipant }]);
+      const route = routeByMessage.get(record.index);
+      return role === 'source' ? route.sourcePort.point : route.targetPort.point;
+    };
+    const start = pointAt(startRecord, activation.startEnd, 'startEnd'), end = pointAt(endRecord, activation.endEnd, 'endEnd');
+    if (end.y <= start.y) throw new DiagramInputError('Sequence activation duration must be positive', [{ phase: 'planned', severity: 'error', code: 'ACTIVATION_DURATION', path: `activations[${index}]`, message: 'The ending message endpoint must follow the starting endpoint', value: { start: start.y, end: end.y } }]);
+    model.push(vertex(`activation_${index}`, '', `sequenceRole=umlLifeline;shape=rect;rounded=0;html=1;whiteSpace=wrap;fillColor=#ffffff;strokeColor=${participantStyle.strokeColor || '#666666'};strokeWidth=1;`, centers[participantIndex] - 6, start.y, 12, end.y - start.y));
+  });
+
   messageRecords.forEach(record => {
     const route = routeByMessage.get(record.index), request = edgeRequests[record.index];
     const itemKind = String(record.item.kind || 'sync').toLowerCase();

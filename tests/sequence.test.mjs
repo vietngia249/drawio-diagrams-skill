@@ -53,6 +53,7 @@ test('participant header wraps long Unicode titles and grows beyond its minimum 
 
 test('long sequence message labels have bounds for their wrapped lines', () => {
   const data = fitTrack();
+  data.activations = [];
   data.messages = [{ from: 'ui', to: 'api', kind: 'sync', label: 'Gửi yêu cầu hoàn tất buổi tập cùng dữ liệu bài tập, thời lượng và toàn bộ các hiệp đã lưu cho phiên luyện tập hiện tại' }];
   const label = renderModel(data).find(cell => cell.attrs.id === 'message_label_0');
   const labelBounds = geom(label);
@@ -76,10 +77,32 @@ test('FitTrackAI example documents only the source-backed successful completion 
   assert.ok(example.messages.some(message => message.label.startsWith('200 JSON')));
 });
 
-test('activation bars are absent unless activation timing is supported by source evidence', () => {
-  const cells = renderModel(fitTrack());
-  assert.equal(cells.filter(cell => /activation/i.test(`${cell.attrs.id} ${cell.attrs.style}`)).length, 0,
-    'the supplied FitTrackAI evidence has no activation timing; renderer should not invent activation bars');
+// Source evidence: ActiveWorkoutSession awaits completeSessionApi; the API handler awaits
+// WorkoutsService.completeSession; that service awaits its ordered Prisma operations.
+test('source-backed synchronous completion spans render as editable activation bars at call boundaries', () => {
+  const data = fitTrack(), cells = renderModel(data), byOrder = new Map(data.messages.map((message, index) => [message.order, index]));
+  assert.equal(cells.filter(cell => /^activation_/.test(cell.attrs.id)).length, data.activations.length);
+  data.activations.forEach((activation, index) => {
+    const bar = cells.find(cell => cell.attrs.id === `activation_${index}`);
+    assert.ok(bar?.vertex, `activation ${index} should be an editable vertex`);
+    assert.match(bar.attrs.style, /(?:^|;)shape=rect(?:;|$)/, 'native activation bars use the evidenced rectangle shape');
+    assert.equal(Number(bar.geometry.width), 12);
+    const startEdge = cells.find(cell => cell.attrs.id === `message_${byOrder.get(activation.startOrder)}`);
+    const endEdge = cells.find(cell => cell.attrs.id === `message_${byOrder.get(activation.endOrder)}`);
+    const startY = endpoint(startEdge, activation.startEnd).y, endY = endpoint(endEdge, activation.endEnd).y;
+    assert.ok(Math.abs(Number(bar.geometry.y) - startY) < 0.000001, `${activation.participant} bar should begin at its call boundary`);
+    assert.ok(Math.abs(Number(bar.geometry.y) + Number(bar.geometry.height) - endY) < 0.000001, `${activation.participant} bar should end at its completion boundary`);
+    assert.ok(endY > startY, 'activation duration must be positive');
+    const participantIndex = data.participants.findIndex(participant => participant.id === activation.participant);
+    const lifeline = cells.find(cell => cell.attrs.id === `participant_${participantIndex}`);
+    assert.equal(Number(bar.geometry.x) + Number(bar.geometry.width) / 2, Number(lifeline.geometry.x) + Number(lifeline.geometry.width) / 2,
+      'activation should be centered on its declared participant lifeline');
+  });
+});
+
+test('activation bars are omitted when synchronous lifetime evidence is absent', () => {
+  const cells = renderModel({ type: 'sequence', participants: ['A', 'B'], messages: [{ from: 'A', to: 'B', kind: 'sync', label: 'call' }] });
+  assert.equal(cells.filter(cell => /^activation_/.test(cell.attrs.id)).length, 0);
 });
 
 test('self-call route has orthogonal clearance and its label is a separately associated cell', () => {
