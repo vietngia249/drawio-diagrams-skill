@@ -1,4 +1,4 @@
-import { DiagramInputError, htmlText, serializeCells, textWidth } from './common.mjs';
+import { DiagramInputError, fitShapeToBounds, htmlText, selfMessageGeometry, serializeCells, spacingFor, styleForRole, textWidth } from './common.mjs';
 import { routeOrthogonalEdges } from './geometry.mjs';
 
 const fragmentKinds = new Set(['alt', 'opt', 'loop', 'par']);
@@ -51,8 +51,8 @@ function orderedItems(owner) {
 function pageSize(data, contentWidth, contentHeight) {
   const page = data.page ?? {};
   return {
-    width: page.width ?? Math.max(800, contentWidth),
-    height: page.height ?? Math.max(800, contentHeight)
+    width: Math.max(page.width ?? 0, page.width === undefined ? 800 : 0, contentWidth),
+    height: Math.max(page.height ?? 0, page.height === undefined ? 800 : 0, contentHeight)
   };
 }
 
@@ -78,12 +78,21 @@ function routeBounds(route) {
   return { x: Math.min(...xs), y: Math.min(...ys), width: Math.max(...xs) - Math.min(...xs), height: Math.max(...ys) - Math.min(...ys) };
 }
 
-/**
- * Plan semantic cells using the shared router, then adapt to the pre-migration
- * direct-call contract by returning serialized cells. The dispatcher accepts
- * these strings through serializeCells() during the migration window.
- */
-export function renderSequence(data, styleConfig = {}) {
+function updateStyle(style, overrides = {}) {
+  const entries = new Map(String(style).split(';').filter(Boolean).map(part => {
+    const index = part.indexOf('='); return index < 0 ? [part, ''] : [part.slice(0, index), part.slice(index + 1)];
+  }));
+  for (const [key, value] of Object.entries(overrides)) entries.set(key, String(value));
+  return [...entries].map(([key, value]) => value === '' ? key : `${key}=${value}`).join(';') + ';';
+}
+
+function legacyOverrides(config, defaults) {
+  return Object.fromEntries(Object.entries(defaults)
+    .filter(([key, value]) => config?.[key] !== undefined && config[key] !== value)
+    .map(([key]) => [key, config[key]]));
+}
+
+export function renderSequence(data, styleConfig = {}, context = {}) {
   const participants = data.participants || [];
   const ids = participants.map((participant, index) => typeof participant === 'string' ? participant : (participant.id ?? `p${index}`));
   const labels = participants.map((participant, index) => typeof participant === 'string' ? participant : (participant.label ?? participant.id ?? `P${index + 1}`));
@@ -96,15 +105,23 @@ export function renderSequence(data, styleConfig = {}) {
 
   const sequenceStyle = styleConfig.sequence || {}, participantStyle = sequenceStyle.participant || {};
   const fragmentStyle = sequenceStyle.fragment || {}, messageStyle = sequenceStyle.message || {};
-  const fontSize = numberOr(sequenceStyle.fontSize, 16), messageFontSize = numberOr(messageStyle.fontSize, fontSize);
-  const guardFontSize = numberOr(fragmentStyle.guardFontSize, 14);
+  const presentation = styleConfig.presentation || {};
+  const configuredFontSize = numberOr(sequenceStyle.fontSize, 16);
+  const fontSize = configuredFontSize === 16 ? numberOr(presentation.fontSizes?.heading, 16) : configuredFontSize;
+  const configuredMessageFontSize = numberOr(messageStyle.fontSize, 16);
+  const messageFontSize = configuredMessageFontSize === 16 ? numberOr(presentation.fontSizes?.label, fontSize) : configuredMessageFontSize;
+  const configuredGuardFontSize = numberOr(fragmentStyle.guardFontSize, 14);
+  const guardFontSize = configuredGuardFontSize === 14 ? numberOr(presentation.fontSizes?.body, 14) : configuredGuardFontSize;
+  const fontFamily = sequenceStyle.fontFamily && sequenceStyle.fontFamily !== 'Arial'
+    ? sequenceStyle.fontFamily : (presentation.fontFamily || 'Arial');
+  const presentationStyles = { ...presentation, fontFamily };
   const headerWrapChars = Math.max(14, Math.floor((260 - 24) / (fontSize * 0.58)));
   const participantShapes = participants.map(participant => typeof participant === 'string'
     ? participantStyle.shape || 'umlLifeline'
     : participant.shape || participantStyle.shape || 'umlLifeline');
   const participantMetrics = labels.map((label, index) => {
     const raw = String(label ?? '');
-    const width = clamp(Math.ceil(textWidth(raw, fontSize) + 30), 130, 260);
+    const width = clamp(Math.ceil(textWidth(raw, fontSize, fontFamily) + 30), 130, 260);
     const maxChars = headerWrapChars;
     const display = wrapText(raw, maxChars), lines = lineCount(display);
     const labelHeight = Math.max(20, Math.ceil(lines * fontSize * 1.35 + 8));
@@ -156,17 +173,18 @@ export function renderSequence(data, styleConfig = {}) {
       const from = participantIndexes.get(String(record.item.from)), to = participantIndexes.get(String(record.item.to));
       if (from === undefined || to === undefined || from === to) return max;
       const low = Math.min(from, to), high = Math.max(from, to);
-      return gapIndex >= low && gapIndex < high ? Math.max(max, record.metrics.width + 28) : max;
+      return gapIndex >= low && gapIndex < high ? Math.max(max, record.metrics.width + spacingFor('nodeGap', presentation)) : max;
     }, 0);
     return Math.max(130, needed);
   });
   const centers = [];
   let cursor = 80;
   widths.forEach((width, index) => { centers[index] = cursor + width / 2; cursor += width + (gaps[index] || 0); });
-  const rawLeft = centers.length ? Math.min(...centers.map((center, index) => center - widths[index] / 2)) - 32 : 48;
-  const rawRight = centers.length ? Math.max(...centers.map((center, index) => center + widths[index] / 2)) + 32 : 180;
+  const containerPadding = spacingFor('containerPadding', presentation);
+  const rawLeft = centers.length ? Math.min(...centers.map((center, index) => center - widths[index] / 2)) - containerPadding : 48;
+  const rawRight = centers.length ? Math.max(...centers.map((center, index) => center + widths[index] / 2)) + containerPadding : 180;
   const contentHeight = Math.max(planned.end + 140, messageRecords.length * 100 + 260, 800);
-  const page = pageSize(data, rawRight - rawLeft + 80, contentHeight);
+  const page = pageSize(data, rawRight + 20, contentHeight);
   const left = Math.max(20, rawLeft), right = Math.min(page.width - 20, rawRight);
   const lineTop = Math.max(...participantMetrics.map(metric => headerTop + metric.height), headerTop + 52);
   const lineBottom = Math.max(lineTop + 300, page.height - 48);
@@ -214,7 +232,8 @@ export function renderSequence(data, styleConfig = {}) {
     offsets.forEach((offset, index) => { group[index].request[group[index].end].port.preferredOffset = Number((offset - shift).toFixed(6)); });
   }
 
-  const routed = routeOrthogonalEdges({ obstacles, edges: edgeRequests, page, clearance: 8 });
+  const routed = routeOrthogonalEdges({ obstacles, edges: edgeRequests, page,
+    clearance: spacingFor('routeClearance', presentation), minimumRouteGap: spacingFor('laneSpacing', presentation) });
   const routeErrors = routed.diagnostics.filter(diagnostic => diagnostic.severity === 'error');
   if (routeErrors.length) throw new DiagramInputError('Sequence routing failed', routeErrors);
   const routeByMessage = new Map(routed.routes.map((route, index) => [index, route]));
@@ -231,14 +250,17 @@ export function renderSequence(data, styleConfig = {}) {
     const item = record.item, route = routeByMessage.get(record.index);
     if (String(item.from) !== String(item.to)) continue;
     const participantIndex = participantIndexes.get(String(item.from));
-    const offset = 42 + record.index * 8;
-    const rightSpace = page.width - (centers[participantIndex] + offset), leftSpace = centers[participantIndex] - offset;
+    const selfTokens = presentation.selfMessage || {};
+    const extent = Number(selfTokens.offset ?? 16) + Number(selfTokens.width ?? 32) + record.index * Number(selfTokens.trackGap ?? 12);
+    const rightSpace = page.width - (centers[participantIndex] + extent), leftSpace = centers[participantIndex] - extent;
     const rightFits = rightSpace >= record.metrics.width + 24, leftFits = leftSpace >= record.metrics.width + 24;
     const loopSide = rightFits && leftFits ? (rightSpace >= leftSpace ? 1 : -1) : rightFits ? 1 : leftFits ? -1 : (rightSpace >= leftSpace ? 1 : -1);
-    const trackX = centers[participantIndex] + loopSide * offset;
+    const geometry = selfMessageGeometry({ x: route.sourcePort.point.x, y: route.sourcePort.point.y,
+      side: loopSide > 0 ? 'right' : 'left', track: record.index }, presentation);
+    const trackX = geometry.points[1].x;
     const occupiedOffsets = routed.routes.flatMap((otherRoute, otherIndex) => otherIndex === record.index ? [] : [otherRoute.sourcePort, otherRoute.targetPort])
       .filter(port => port.nodeId === route.targetPort.nodeId && port.side === route.targetPort.side).map(port => port.offset);
-    const desiredTargetOffset = clamp(route.sourcePort.offset + 28 / lineHeight, 0.04, 0.96);
+    const desiredTargetOffset = clamp(route.sourcePort.offset + geometry.bounds.height / lineHeight, 0.04, 0.96);
     const offsetCandidates = [];
     offsetCandidates.push(desiredTargetOffset);
     for (let delta = 0.01; delta <= 0.5; delta += 0.01) offsetCandidates.push(desiredTargetOffset - delta, desiredTargetOffset + delta);
@@ -246,11 +268,11 @@ export function renderSequence(data, styleConfig = {}) {
     const nearbyOffset = offsetCandidates.find(candidate => candidate >= 0.04 && candidate <= 0.96
       && occupiedOffsets.every(used => Math.abs(used - candidate) >= 0.08));
     if (nearbyOffset !== undefined) {
-      route.targetPort.offset = Number(nearbyOffset.toFixed(6));
-      route.targetPort.point.y = lineTop + route.targetPort.offset * lineHeight;
+      route.targetPort.offset = nearbyOffset;
+      route.targetPort.point.y = route.sourcePort.point.y + geometry.bounds.height;
     }
     const startY = route.sourcePort.point.y, endY = route.targetPort.point.y;
-    route.points = [{ x: trackX, y: startY }, { x: trackX, y: endY }];
+    route.points = geometry.points.slice(1, -1);
     route.bounds = routeBounds(route);
     const metrics = record.metrics;
     const labelX = loopSide > 0 ? trackX + 12 : trackX - metrics.width - 12;
@@ -284,8 +306,11 @@ export function renderSequence(data, styleConfig = {}) {
     const top = Math.max(lineTop + 8, (nonempty.length ? Math.min(...nonempty.map(range => range.top)) : node.start) - largestGuard - 20);
     const bottom = Math.min(lineBottom - 2, (nonempty.length ? Math.max(...nonempty.map(range => range.bottom)) : node.end) + 38);
     const id = `fragment_${node.index}`;
+    const frameBase = `shape=${fragmentStyle.shape || 'umlFrame'};html=1;whiteSpace=wrap;pointerEvents=0;`;
+    const frameStyle = updateStyle(styleForRole('container', presentationStyles, frameBase), legacyOverrides(fragmentStyle,
+      { shape: 'umlFrame', fillColor: '#eeeeee', strokeColor: '#999999', strokeWidth: 1, fontSize: 16 }));
     model.push(vertex(id, node.fragmentKind,
-      `shape=${fragmentStyle.shape || 'umlFrame'};html=1;whiteSpace=wrap;pointerEvents=0;fillColor=${fragmentStyle.fillColor || '#eeeeee'};strokeColor=${fragmentStyle.strokeColor || '#999999'};strokeWidth=${fragmentStyle.strokeWidth || 1};fontSize=${fragmentStyle.fontSize || fontSize};`,
+      frameStyle,
       left, top, Math.max(100, right - left), Math.max(56, bottom - top)));
     branchRanges.forEach((range, branchIndex) => {
       if (branchIndex) {
@@ -293,30 +318,44 @@ export function renderSequence(data, styleConfig = {}) {
         const y = clamp((previous.bottom + range.top) / 2, top + 28, bottom - 8), sep = `${id}_sep_${branchIndex}`;
         model.push(vertex(`${sep}_a`, '', 'opacity=0;fillColor=none;strokeColor=none;', left + 1, y, 2, 2));
         model.push(vertex(`${sep}_b`, '', 'opacity=0;fillColor=none;strokeColor=none;', right - 3, y, 2, 2));
-        model.push({ kind: 'edge', id: sep, value: '', style: `${fragmentStyle.separatorStyle || 'dashed=1;strokeColor=#999999;strokeWidth=1'};startArrow=none;endArrow=none;edgeStyle=none;`, parent: '1', source: `${sep}_a`, target: `${sep}_b`, ports: { source: { side: 'east', offset: 0.5 }, target: { side: 'west', offset: 0.5 } }, geometry: { relative: 1, sourcePoint: { x: left + 3, y: y + 1 }, targetPoint: { x: right - 3, y: y + 1 }, points: [{ x: (left + right) / 2, y: y + 1 }] } });
+        const separatorColors = { ...presentationStyles, colors: { ...(presentation.colors || {}), stroke: presentation.colors?.mutedStroke || '#999999' } };
+        const separatorBase = 'dashed=1;startArrow=none;endArrow=none;edgeStyle=none;';
+        const separatorStyle = styleForRole('edge', separatorColors, separatorBase);
+        const configuredSeparator = fragmentStyle.separatorStyle;
+        const separatorOverrides = configuredSeparator && configuredSeparator !== 'dashed=1;strokeColor=#999999;strokeWidth=1'
+          ? Object.fromEntries(configuredSeparator.split(';').filter(Boolean).map(part => {
+            const separator = part.indexOf('='); return separator < 0 ? [part, ''] : [part.slice(0, separator), part.slice(separator + 1)];
+          })) : {};
+        model.push({ kind: 'edge', id: sep, value: '', style: updateStyle(separatorStyle, separatorOverrides), parent: '1', source: `${sep}_a`, target: `${sep}_b`, ports: { source: { side: 'east', offset: 0.5 }, target: { side: 'west', offset: 0.5 } }, geometry: { relative: 1, sourcePoint: { x: left + 3, y: y + 1 }, targetPoint: { x: right - 3, y: y + 1 }, points: [{ x: (left + right) / 2, y: y + 1 }] } });
       }
       if (range.branch.guard) {
         const guardY = branchIndex ? clamp(range.top - range.branch.guardHeight - 12, top + 26, bottom - range.branch.guardHeight - 8) : top + 8;
+        const guardLeft = left + (branchIndex === 0 ? 76 : 12);
         model.push(vertex(`${id}_guard_${branchIndex}`, htmlText(`[${range.branch.displayGuard}]`),
-          `text;html=1;align=left;verticalAlign=top;whiteSpace=wrap;fillColor=#ffffff;strokeColor=none;fontSize=${guardFontSize};`,
-          left + 12, guardY, Math.max(100, right - left - 24), range.branch.guardHeight));
+          updateStyle(styleForRole('body', presentationStyles, 'text;html=1;align=left;verticalAlign=top;whiteSpace=wrap;'), { fontSize: guardFontSize }),
+          guardLeft, guardY, Math.max(100, right - guardLeft - 12), range.branch.guardHeight));
       }
       range.branch.nodes.forEach(frameCells);
     });
   }
   planned.nodes.forEach(frameCells);
 
+  const mutedPresentation = { ...presentationStyles, colors: { ...(presentation.colors || {}), stroke: presentation.colors?.mutedStroke || '#666666' } };
+  const participantOverrides = legacyOverrides(participantStyle,
+    { shape: 'umlLifeline', fillColor: 'none', strokeColor: '#999999', strokeWidth: 1, rounded: 0 });
   participants.forEach((participant, index) => {
     const metric = participantMetrics[index], x = centers[index] - metric.width / 2;
-    model.push(vertex(`participant_${index}`, '', `sequenceRole=umlLifeline;dashed=1;strokeColor=${participantStyle.strokeColor || '#999999'};strokeWidth=${participantStyle.strokeWidth || 1};`, centers[index] - 0.5, lineTop, 1, lineHeight));
+    const lifelineStyle = styleForRole('edge', mutedPresentation, 'sequenceRole=umlLifeline;dashed=1;fillColor=none;');
+    model.push(vertex(`participant_${index}`, '', updateStyle(lifelineStyle, participantOverrides), centers[index] - 0.5, lineTop, 1, lineHeight));
     if (metric.shape === 'umlActor') {
-      model.push(vertex(`participant_header_${index}`, '', 'shape=umlActor;html=1;fillColor=#ffffff;strokeColor=#000000;strokeWidth=1;', centers[index] - 32, headerTop, 64, 72));
+      const actorBounds = fitShapeToBounds({ x: centers[index] - 32, y: headerTop, width: 64, height: 72 }, Number(presentation.proportions?.actor ?? 64 / 72));
+      model.push(vertex(`participant_header_${index}`, '', styleForRole('node', presentationStyles, 'shape=umlActor;html=1;'), actorBounds.x, actorBounds.y, actorBounds.width, actorBounds.height));
       model.push(vertex(`participant_label_${index}`, htmlText(metric.display),
-        `text;html=1;whiteSpace=wrap;align=center;verticalAlign=middle;fillColor=none;strokeColor=none;fontSize=${fontSize};`,
+        updateStyle(styleForRole('heading', presentationStyles, 'text;html=1;whiteSpace=wrap;align=center;verticalAlign=middle;'), { fontSize }),
         x, headerTop + 78, metric.width, metric.labelHeight));
     } else {
       model.push(vertex(`participant_header_${index}`, htmlText(metric.display),
-        `rounded=${participantStyle.rounded ?? 0};html=1;whiteSpace=wrap;fontSize=${fontSize};shape=${metric.shape};fillColor=${participantStyle.fillColor || 'none'};strokeColor=${participantStyle.strokeColor || '#999999'};strokeWidth=${participantStyle.strokeWidth || 1};`,
+        updateStyle(updateStyle(styleForRole('container', presentationStyles, `rounded=${participantStyle.rounded ?? 0};html=1;whiteSpace=wrap;shape=${metric.shape};`), participantOverrides), { fontSize }),
         x, headerTop, metric.width, metric.height));
     }
   });
@@ -345,14 +384,18 @@ export function renderSequence(data, styleConfig = {}) {
     };
     const start = pointAt(startRecord, activation.startEnd, 'startEnd'), end = pointAt(endRecord, activation.endEnd, 'endEnd');
     if (end.y <= start.y) throw new DiagramInputError('Sequence activation duration must be positive', [{ phase: 'planned', severity: 'error', code: 'ACTIVATION_DURATION', path: `activations[${index}]`, message: 'The ending message endpoint must follow the starting endpoint', value: { start: start.y, end: end.y } }]);
-    model.push(vertex(`activation_${index}`, '', `sequenceRole=umlLifeline;shape=rect;rounded=0;html=1;whiteSpace=wrap;fillColor=#ffffff;strokeColor=${participantStyle.strokeColor || '#666666'};strokeWidth=1;`, centers[participantIndex] - 6, start.y, 12, end.y - start.y));
+    const activationStyle = updateStyle(styleForRole('container', mutedPresentation,
+      'sequenceRole=umlLifeline;shape=rect;rounded=0;html=1;whiteSpace=wrap;'), participantOverrides);
+    model.push(vertex(`activation_${index}`, '', activationStyle, centers[participantIndex] - 6, start.y, 12, end.y - start.y));
   });
 
   messageRecords.forEach(record => {
     const route = routeByMessage.get(record.index), request = edgeRequests[record.index];
     const itemKind = String(record.item.kind || 'sync').toLowerCase();
     const arrow = itemKind === 'sync' ? 'block' : 'open', dashed = itemKind === 'return' && messageStyle.returnDashed !== false ? 1 : 0;
-    const edgeStyle = `edgeStyle=none;rounded=0;html=1;endArrow=${arrow};startArrow=none;dashed=${dashed};strokeColor=${messageStyle.strokeColor || '#000000'};strokeWidth=${messageStyle.strokeWidth || 1};`;
+    const edgeStyle = updateStyle(styleForRole('edge', presentationStyles,
+      `edgeStyle=none;rounded=0;html=1;endArrow=${arrow};startArrow=none;dashed=${dashed};`),
+    legacyOverrides(messageStyle, { strokeColor: '#000000', strokeWidth: 1 }));
     if (!route.points.length) {
       const start = route.sourcePort.point, end = route.targetPort.point;
       route.points = [{ x: (start.x + end.x) / 2, y: (start.y + end.y) / 2 }];
@@ -366,11 +409,22 @@ export function renderSequence(data, styleConfig = {}) {
     const route = routeByMessage.get(record.index), bounds = route.label?.bounds;
     if (!bounds) throw new DiagramInputError(`Sequence message ${record.index} has no clear label position`, [{ phase: 'planned', severity: 'error', code: 'LABEL_ROUTE_UNAVAILABLE', path: `messages[${record.index}].label`, message: 'The shared router could not place the message label with clearance' }]);
     model.push(vertex(`message_label_${record.index}`, htmlText(record.metrics.displayLabel),
-      `text;html=1;align=center;verticalAlign=middle;whiteSpace=wrap;fillColor=#ffffff;strokeColor=none;fontSize=${messageFontSize};`,
+      updateStyle(updateStyle(styleForRole('label', presentationStyles, 'text;html=1;align=center;verticalAlign=middle;whiteSpace=wrap;'),
+        { fontSize: messageFontSize }), legacyOverrides(messageStyle, { fontSize: 16 })),
       bounds.x, bounds.y, bounds.width, bounds.height));
   });
 
-  const result = serializeCells(model);
-  result.page = page;
+  const extents = model.flatMap(cell => {
+    if (cell.kind === 'vertex') return [{ right: cell.geometry.x + cell.geometry.width, bottom: cell.geometry.y + cell.geometry.height }];
+    const points = [cell.geometry.sourcePoint, cell.geometry.targetPoint, ...(cell.geometry.points || [])].filter(Boolean);
+    return points.map(point => ({ right: point.x, bottom: point.y }));
+  });
+  page.width = Math.max(page.width, Math.ceil(Math.max(0, ...extents.map(bounds => bounds.right)) + 20));
+  page.height = Math.max(page.height, Math.ceil(Math.max(0, ...extents.map(bounds => bounds.bottom)) + 20));
+  if ((context?.helpers || Array.isArray(data.diagnostics)) && data.page !== undefined) data.page = page;
+  const result = { cells: model, page, diagnostics: [] };
+  // Keep the one pre-migration direct-call inspection pattern working while
+  // the dispatcher and new consumers use the shared model result.
+  Object.defineProperty(result, 'find', { enumerable: false, value: predicate => serializeCells(model).find(predicate) });
   return result;
 }
