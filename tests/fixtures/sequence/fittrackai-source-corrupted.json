@@ -1,0 +1,12 @@
+{
+  "type": "sequence",
+  "title": "Hoàn tất buổi tập và lưu các hiệp",
+  "participants": [
+    { "id": "ui", "label": "Giao di?n\nActiveWorkoutSession" },
+    { "id": "api", "label": "API Fastify\ncontroller/routes" },
+    { "id": "svc", "label": "WorkoutsService" },
+    { "id": "db", "label": "Prisma / PostgreSQL" }
+  ],
+  "messages": [],
+  "fragments": []
+}
