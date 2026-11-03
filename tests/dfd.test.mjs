@@ -8,6 +8,7 @@ const style=JSON.parse(readFileSync(new URL('../scripts/style.json',import.meta.
 const model=JSON.parse(readFileSync(new URL('./fixtures/dfd-fittrackai-logical-level1.json',import.meta.url),'utf8'));
 const physical=JSON.parse(readFileSync(new URL('./fixtures/dfd-fittrackai-physical-level1.json',import.meta.url),'utf8'));
 const stress=JSON.parse(readFileSync(new URL('./fixtures/dfd-parallel-reverse.json',import.meta.url),'utf8'));
+const acceptance=JSON.parse(readFileSync(new URL('./fixtures/acceptance/dfd.json',import.meta.url),'utf8'));
 const render=(data=model)=>serializeCells(renderDfd(data,style).cells).join('\n');
 const cells=xml=>[...xml.matchAll(/<mxCell\b[\s\S]*?<\/mxCell>/g)].map(match=>match[0]);
 const attr=(cell,name)=>cell.match(new RegExp(`\\b${name}="([^"]*)"`))?.[1]??'';
@@ -24,6 +25,17 @@ test('example declares a logical Level 1 DFD and names the perspective',()=>{
   assert.equal(example.level,1);
   assert.equal(example.perspective,'logical');
   assert.match(example.title,/Logical Level 1/);
+});
+
+test('clean Vietnamese acceptance labels survive DFD XML serialization',()=>{
+  const xml=render(acceptance);
+  assert.equal(acceptance.title,'Synthetic UTF-8 DFD: Tra cứu & phản hồi <demo>');
+  assert.ok(acceptance.nodes.some(node=>node.label==='D1 Hồ sơ khách hàng <đã lưu>'));
+  assert.ok(acceptance.flows.some(flow=>flow.label==='Kết quả <hợp lệ> & ghi chú'));
+  assert.ok(xml.includes('Tra cứu'));
+  assert.ok(xml.includes('Hồ sơ khách hàng'));
+  assert.ok(xml.includes('hợp lệ'));
+  assert.doesNotMatch(xml,/(?:Ã.|á»|Â.)/);
 });
 
 test('flow labels describe business data and omit transport protocol details',()=>{
