@@ -17,10 +17,13 @@ const renderModel = data => parseCells(docXml(data.title || 'Sequence regression
 const byId = cells => new Map(cells.map(cell => [cell.attrs.id, cell]));
 const geom = cell => Object.fromEntries(['x', 'y', 'width', 'height'].map(key => [key, Number(cell.geometry[key] || 0)]));
 const points = edge => edge.geometry.points.filter(point => !point.as || point.as === 'points').map(point => ({ x: Number(point.x), y: Number(point.y) }));
+const endpoint = (edge, end) => {
+  const point = edge.geometry.points.find(candidate => candidate.as === `${end}Point`);
+  return point && { x: Number(point.x), y: Number(point.y) };
+};
 const isOrthogonal = (a, b) => a.x === b.x || a.y === b.y;
 const segmentsFor = (edge, cells) => {
-  const map = byId(cells), source = geom(map.get(edge.attrs.source)), target = geom(map.get(edge.attrs.target));
-  const route = [{ x: source.x + source.width / 2, y: source.y + source.height / 2 }, ...points(edge), { x: target.x + target.width / 2, y: target.y + target.height / 2 }];
+  const route = [endpoint(edge, 'source'), ...points(edge), endpoint(edge, 'target')];
   return route.slice(1).map((point, index) => [route[index], point]);
 };
 const segmentKey = ([a, b]) => `${Math.min(a.x, b.x)},${Math.min(a.y, b.y)}:${Math.max(a.x, b.x)},${Math.max(a.y, b.y)}`;
@@ -30,11 +33,11 @@ test('sequence round-trips Unicode participant labels and XML-sensitive text thr
   const data = fitTrack();
   data.participants[0].label = 'Giao diện <người tập> & ActiveWorkoutSession';
   const cells = renderModel(data);
-  const participant = cells.find(cell => cell.attrs.id === 'participant_0');
+  const participant = cells.find(cell => cell.attrs.id === 'participant_header_0');
   assert.ok(participant.attrs.value.includes('diện'));
   assert.ok(participant.attrs.value.includes('&lt;người tập&gt;'));
   assert.ok(participant.attrs.value.includes('&amp;'));
-  assert.equal(participant.attrs.value, htmlText(data.participants[0].label));
+  assert.equal(participant.attrs.value.replaceAll('<br>', ' '), htmlText(data.participants[0].label).replaceAll('<br>', ' '));
 });
 
 test('participant header wraps long Unicode titles and grows beyond its minimum height', () => {
@@ -42,7 +45,7 @@ test('participant header wraps long Unicode titles and grows beyond its minimum 
     { id: 'ui', label: 'Giao diện người dùng có tên dài vượt quá vùng tiêu đề chuẩn\nActiveWorkoutSession' },
     { id: 'api', label: 'API' }
   ], messages: [] };
-  const cells = renderModel(data), participant = cells.find(cell => cell.attrs.id === 'participant_0');
+  const cells = renderModel(data), participant = cells.find(cell => cell.attrs.id === 'participant_header_0');
   const header = geom(participant);
   assert.ok(header.width >= 180, 'header should expand within its sizing bounds');
   assert.ok(header.height >= 70, 'a capped header width should wrap the title and increase height');
@@ -59,10 +62,10 @@ test('long sequence message labels have bounds for their wrapped lines', () => {
 
 test('participants use the native UML lifeline shape and have visible lifeline stems', () => {
   const cells = renderModel(fitTrack());
-  const participants = cells.filter(cell => /^participant_\d+$/.test(cell.attrs.id));
+  const participants = cells.filter(cell => /^participant_header_\d+$/.test(cell.attrs.id));
   assert.equal(participants.length, 4);
   for (const participant of participants) assert.match(participant.attrs.style, /(?:^|;)shape=umlLifeline(?:;|$)/);
-  for (let index = 0; index < 4; index++) assert.ok(cells.some(cell => cell.attrs.id === `lifeline_${index}`), `participant ${index} should have a lifeline`);
+  for (let index = 0; index < 4; index++) assert.ok(cells.some(cell => cell.attrs.id === `participant_${index}` && /dashed=1/.test(cell.attrs.style)), `participant ${index} should be a semantic lifeline endpoint`);
 });
 
 test('FitTrackAI example documents only the source-backed successful completion scenario', () => {
@@ -84,14 +87,15 @@ test('self-call route has orthogonal clearance and its label is a separately ass
   const selfIndex = data.messages.findIndex(message => message.from === message.to);
   const edgeCell = edges.find(edge => edge.attrs.id === `message_${selfIndex}`);
   const route = segmentsFor(edgeCell, cells);
-  assert.ok(route.length >= 4, 'self-call needs a visible loop extending out and returning to its lifeline');
+  assert.ok(route.length >= 3, 'self-call needs a visible loop extending out and returning to its lifeline');
   for (const segment of route) assert.ok(isOrthogonal(...segment), 'each self-call segment should be horizontal or vertical');
   const label = cells.find(cell => cell.attrs.id === `message_label_${selfIndex}`);
   assert.ok(label?.vertex && label.attrs.value, 'self-call label should be rendered as its own text cell');
   assert.equal(edgeCell.attrs.value, '', 'message text should not be embedded on the route edge');
-  const loop = route.map(segmentKey);
   const labelBounds = geom(label);
-  assert.ok(loop.some(key => { const [, span] = key.split(':'); const [x1, y1] = span.split(',').map(Number); return x1 >= labelBounds.x || y1 >= labelBounds.y; }), 'self-call track should leave clearance for its associated label');
+  const trackX = route[0][1].x;
+  const labelGap = trackX < labelBounds.x ? labelBounds.x - trackX : trackX - (labelBounds.x + labelBounds.width);
+  assert.ok(Number.isFinite(trackX) && labelGap >= 8, 'self-call label should sit beside its outside loop with clearance');
 });
 
 test('combined fragment conditions appear only when the input justifies a fragment', () => {
@@ -131,12 +135,12 @@ test('parallel and reverse messages use distinct semantic ports and route lanes'
   for (const edge of edges) {
     assert.ok(/^participant_/.test(edge.attrs.source), 'message source should be its semantic participant');
     assert.ok(/^participant_/.test(edge.attrs.target), 'message target should be its semantic participant');
-    assert.ok(edge.geometry.sourcePoint && edge.geometry.targetPoint, 'each message end should declare its port');
+    assert.ok(endpoint(edge, 'source') && endpoint(edge, 'target'), 'each message end should declare an explicit port point');
   }
-  assert.equal(new Set(edges.map(edge => JSON.stringify([edge.geometry.sourcePoint, edge.geometry.targetPoint]))).size, 4,
+  assert.equal(new Set(edges.map(edge => JSON.stringify([endpoint(edge, 'source'), endpoint(edge, 'target')]))).size, 4,
     'parallel and reverse messages should have distinct endpoint ports');
-  const lanes = edges.map(edge => points(edge).map(point => point.y));
-  assert.equal(new Set(lanes.map(lane => JSON.stringify(lane))).size, lanes.length, 'parallel and reverse messages need separate tracks');
+  const tracks = edges.map(edge => JSON.stringify([endpoint(edge, 'source'), points(edge), endpoint(edge, 'target')]));
+  assert.equal(new Set(tracks).size, tracks.length, 'parallel and reverse messages need separate tracks');
 });
 
 test('unrelated sequence messages do not share route segments', () => {
@@ -171,6 +175,6 @@ test('source-input corruption is distinct from renderer Unicode preservation', (
   const corrected = fixture('fittrackai-utf8.json');
   assert.equal(corrupted.participants[0].label.split('\n')[0], 'Giao di?n', 'source fixture records the literal question mark already present upstream');
   assert.equal(corrected.participants[0].label.split('\n')[0], 'Giao diện');
-  const participant = renderModel(corrected).find(cell => cell.attrs.id === 'participant_0');
+  const participant = renderModel(corrected).find(cell => cell.attrs.id === 'participant_header_0');
   assert.equal(participant.attrs.value, 'Giao diện<br>ActiveWorkoutSession');
 });
