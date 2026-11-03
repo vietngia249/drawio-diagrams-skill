@@ -25,6 +25,14 @@ function render(inputName) {
   return { cells, byId: new Map(cells.map(cell => [cell.attrs.id, cell])), output };
 }
 
+function renderExample(inputName) {
+  const input = path.join(root, 'examples', inputName), output = path.join(temp, `example-${inputName}`);
+  const run = spawnSync(process.execPath, ['scripts/render_drawio.mjs', input, '-o', output], { cwd: root, encoding: 'utf8' });
+  assert.equal(run.status, 0, run.stderr);
+  const cells = cellsFromModel(parseDrawioText(fs.readFileSync(output, 'utf8')).graph);
+  return { cells, byId: new Map(cells.map(cell => [cell.attrs.id, cell])), output };
+}
+
 function readJson(file) {
   return JSON.parse(fs.readFileSync(file, 'utf8').replace(/^\uFEFF/, ''));
 }
@@ -202,6 +210,24 @@ test('activity fixture preserves branch merge and a real loop-back transition', 
   assert.ok(loopBack);
   assert.ok(points(loopBack).length >= 1,
     'loop-back must leave and return on a visible orthogonal path');
+});
+
+test('source-backed quick and plan alternatives merge before session creation', () => {
+  const data = readJson(path.join(root, 'examples', 'activity.json'));
+  const { cells, byId } = renderExample('activity.json');
+  const merge = byId.get('activity_merge');
+  assert.ok(merge?.vertex, 'exclusive quick/plan paths require an explicit merge node');
+  assert.match(merge.attrs.style, /rhombus;/);
+  const transitions = cells.filter(cell => cell.edge && cell.attrs.id.startsWith('transition_'));
+  const incoming = transitions.filter(edge => edge.attrs.target === 'activity_merge').map(edge => edge.attrs.source).sort();
+  assert.deepEqual(incoming, ['activity_load', 'activity_manual']);
+  assert.ok(transitions.some(edge => edge.attrs.source === 'activity_merge' && edge.attrs.target === 'activity_create'),
+    'the merged flow continues into session creation');
+  assert.equal(transitions.some(edge => ['activity_load', 'activity_manual'].includes(edge.attrs.source) && edge.attrs.target === 'activity_create'), false,
+    'alternative branches must not bypass the merge');
+  assert.equal(Object.hasOwn(data, 'partitions'), false);
+  assert.equal(data.nodes.some(node => node.partition || node.swimlane), false,
+    'the source flow does not declare responsibility partitions');
 });
 
 test('activity finals retain separate flow-final and activity-final marks', () => {

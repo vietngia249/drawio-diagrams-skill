@@ -3,7 +3,7 @@
   "title": "Bắt đầu, theo dõi và hoàn tất buổi tập",
   "page": {
     "width": 1380,
-    "height": 1080
+    "height": 1180
   },
   "nodes": [
     {
@@ -44,53 +44,59 @@
       "kind": "action",
       "label": "Tạo buổi tập đang diễn ra;\nsao chép bài tập và hiệp mục tiêu\nnếu kế hoạch hợp lệ",
       "x": 535,
-      "y": 380
+      "y": 455
     },
     {
       "id": "local",
       "kind": "action",
       "label": "Giao diện lưu trạng thái\nđang tập vào localStorage",
       "x": 535,
-      "y": 510
+      "y": 585
     },
     {
       "id": "sets",
       "kind": "action",
       "label": "Cập nhật hiệp trong giao diện;\ncó thể thêm hoặc xóa hiệp/bài tập",
       "x": 535,
-      "y": 625
+      "y": 700
     },
     {
       "id": "finish",
       "kind": "action",
       "label": "Gửi thời lượng và dữ liệu\nbài tập/hiệp tới API hoàn tất",
       "x": 535,
-      "y": 755
+      "y": 830
     },
     {
       "id": "owned",
       "kind": "decision",
       "x": 610,
-      "y": 855
+      "y": 930
     },
     {
       "id": "notfound",
       "kind": "flowFinal",
       "x": 1030,
-      "y": 915
+      "y": 990
     },
     {
       "id": "persist",
       "kind": "action",
       "label": "API upsert hiệp; tính tổng khối lượng\nvà cập nhật trạng thái hoàn tất",
       "x": 300,
-      "y": 915
+      "y": 990
     },
     {
       "id": "done",
       "kind": "final",
       "x": 620,
-      "y": 970
+      "y": 1050
+    },
+    {
+      "id": "merge",
+      "kind": "merge",
+      "x": 610,
+      "y": 360
     }
   ],
   "transitions": [
@@ -113,12 +119,12 @@
       "from": "plan"
     },
     {
-      "to": "create",
+      "to": "merge",
       "guard": "[kế hoạch thuộc người dùng]",
       "from": "load"
     },
     {
-      "to": "create",
+      "to": "merge",
       "from": "manual"
     },
     {
@@ -157,6 +163,10 @@
     {
       "to": "done",
       "from": "persist"
+    },
+    {
+      "from": "merge",
+      "to": "create"
     }
   ]
 }
