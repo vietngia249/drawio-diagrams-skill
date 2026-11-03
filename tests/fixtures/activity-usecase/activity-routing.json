@@ -1,7 +1,7 @@
 {
   "type": "activity",
   "title": "Branch, merge, loop and distinct finals",
-  "page": { "width": 1200, "height": 820 },
+  "page": { "width": 1200, "height": 1000 },
   "nodes": [
     { "id": "start", "kind": "initial", "x": 560, "y": 24 },
     { "id": "choose", "kind": "action", "label": "Choose planned or quick workout", "x": 485, "y": 100 },
@@ -9,10 +9,11 @@
     { "id": "planned", "kind": "action", "label": "Load owned plan and target sets", "x": 805, "y": 320 },
     { "id": "quick", "kind": "action", "label": "Start quick workout", "x": 180, "y": 320 },
     { "id": "merge", "kind": "merge", "x": 530, "y": 445 },
-    { "id": "track", "kind": "action", "label": "Track sets and repetitions", "x": 485, "y": 545 },
-    { "id": "finish", "kind": "action", "label": "Complete workout [all data ready]", "x": 485, "y": 670 },
+    { "id": "local", "kind": "action", "label": "Save the active tracking state", "x": 485, "y": 525 },
+    { "id": "track", "kind": "action", "label": "Track sets and repetitions", "x": 485, "y": 625 },
+    { "id": "finish", "kind": "action", "label": "Complete workout [all data ready]", "x": 485, "y": 750 },
     { "id": "cancelled", "kind": "flowFinal", "x": 1100, "y": 480 },
-    { "id": "completed", "kind": "activityFinal", "x": 560, "y": 765 }
+    { "id": "completed", "kind": "activityFinal", "x": 560, "y": 900 }
   ],
   "transitions": [
     { "id": "start-choose", "from": "start", "to": "choose" },
@@ -21,8 +22,9 @@
     { "id": "decision-quick", "from": "decision", "to": "quick", "guard": "[quick workout]" },
     { "id": "planned-merge", "from": "planned", "to": "merge" },
     { "id": "quick-merge", "from": "quick", "to": "merge" },
-    { "id": "merge-track", "from": "merge", "to": "track" },
-    { "id": "track-loop", "from": "track", "to": "track", "guard": "[another set or exercise remains]" },
+    { "id": "merge-local", "from": "merge", "to": "local" },
+    { "id": "local-track", "from": "local", "to": "track" },
+    { "id": "track-local", "from": "track", "to": "local", "guard": "[another set or exercise remains]" },
     { "id": "track-finish", "from": "track", "to": "finish", "guard": "[user completes workout]" },
     { "id": "finish-cancelled", "from": "finish", "to": "cancelled", "guard": "[session not found]" },
     { "id": "finish-completed", "from": "finish", "to": "completed", "guard": "[session belongs to athlete]" }

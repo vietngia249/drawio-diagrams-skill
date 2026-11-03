@@ -48,25 +48,36 @@ function pageBounds(cell, byId) {
   return { x, y, width, height };
 }
 
-function declaredPort(cell, prefix, byId) {
-  const { x, y, width, height } = pageBounds(cell, byId);
-  const matchX = cell.attrs.style.match(new RegExp(`(?:^|;)${prefix}X=([-\\d.]+)`));
-  const matchY = cell.attrs.style.match(new RegExp(`(?:^|;)${prefix}Y=([-\\d.]+)`));
-  assert.ok(matchX && matchY, `${cell.attrs.id} must declare ${prefix}X and ${prefix}Y`);
+function declaredPort(edge, end, byId) {
+  const endpointId = edge.attrs[end === 'source' ? 'source' : 'target'];
+  const cell = byId.get(endpointId), { x, y, width, height } = pageBounds(cell, byId);
+  const prefix = end === 'source' ? 'exit' : 'entry';
+  const matchX = edge.attrs.style.match(new RegExp(`(?:^|;)${prefix}X=([-\\d.]+)`));
+  const matchY = edge.attrs.style.match(new RegExp(`(?:^|;)${prefix}Y=([-\\d.]+)`));
+  assert.ok(matchX && matchY, `${edge.attrs.id} must declare ${prefix}X and ${prefix}Y`);
   return { x: x + width * Number(matchX[1]), y: y + height * Number(matchY[1]) };
 }
 
 function fullRoute(edge, byId) {
-  return [declaredPort(byId.get(edge.attrs.source), 'exit', byId), ...points(edge), declaredPort(byId.get(edge.attrs.target), 'entry', byId)];
+  return [declaredPort(edge, 'source', byId), ...points(edge), declaredPort(edge, 'target', byId)];
 }
 
 function routeSegments(route) {
   return route.slice(1).map((point, index) => [route[index], point]);
 }
 
-function segmentKey([a, b]) {
-  const pair = [`${a.x},${a.y}`, `${b.x},${b.y}`].sort();
-  return pair.join('|');
+function overlapsPositiveLength([a, b], [c, d]) {
+  if (a.x === b.x && c.x === d.x && a.x === c.x)
+    return Math.max(Math.min(a.y, b.y), Math.min(c.y, d.y)) < Math.min(Math.max(a.y, b.y), Math.max(c.y, d.y));
+  if (a.y === b.y && c.y === d.y && a.y === c.y)
+    return Math.max(Math.min(a.x, b.x), Math.min(c.x, d.x)) < Math.min(Math.max(a.x, b.x), Math.max(c.x, d.x));
+  return false;
+}
+
+function overlapsBox(box, vertex, byId) {
+  const bounds = pageBounds(vertex, byId);
+  return box.x < bounds.x + bounds.width && box.x + box.width > bounds.x &&
+    box.y < bounds.y + bounds.height && box.y + box.height > bounds.y;
 }
 
 function crossesVertex([a, b], vertex, byId) {
@@ -80,10 +91,10 @@ test('activity edges have explicit orthogonal, obstacle-clear routes on distinct
   const { cells, byId } = render('activity-routing.json');
   const vertices = cells.filter(cell => cell.vertex && cell.attrs.parent === '1');
   const edges = cells.filter(cell => cell.edge && cell.attrs.id.startsWith('transition_'));
-  const ownedSegments = new Map();
+  const ownedSegments = [];
   for (const edge of edges) {
     const route = fullRoute(edge, byId);
-    assert.ok(points(edge).length >= 2, `${edge.attrs.id} must have explicit route bends`);
+    assert.match(edge.attrs.style, /edgeStyle=none;/, `${edge.attrs.id} must use its serialized path without automatic rerouting`);
     for (let i = 1; i < route.length; i++) {
       assert.ok(route[i - 1].x === route[i].x || route[i - 1].y === route[i].y,
         `${edge.attrs.id} has a diagonal segment`);
@@ -93,16 +104,22 @@ test('activity edges have explicit orthogonal, obstacle-clear routes on distinct
       assert.match(styles, new RegExp(`(?:^|;)${port}=[-\\d.]+(?:;|$)`), `${edge.attrs.id} must declare ${port}`);
     }
     for (const segment of routeSegments(route)) {
-      const key = segmentKey(segment);
-      assert.ok(!ownedSegments.has(key), `${edge.attrs.id} shares a route segment with ${ownedSegments.get(key)}`);
-      ownedSegments.set(key, edge.attrs.id);
+      for (const previous of ownedSegments) assert.equal(overlapsPositiveLength(segment, previous.segment), false,
+        `${edge.attrs.id} shares a route segment with ${previous.edgeId}`);
+      ownedSegments.push({ segment, edgeId: edge.attrs.id });
       for (const vertex of vertices) {
         if (vertex.attrs.id === edge.attrs.source || vertex.attrs.id === edge.attrs.target) continue;
         assert.ok(!crossesVertex(segment, vertex, byId), `${edge.attrs.id} route crosses unrelated obstacle ${vertex.attrs.id}`);
       }
     }
   }
-  assert.ok(edges.some(edge => /another set or exercise remains/.test(edge.attrs.value)), 'guard labels must remain attached to the loop route');
+  const loopLabel = byId.get('transition_label_track-local');
+  assert.ok(loopLabel, 'guard must have its own measured text cell');
+  assert.match(loopLabel.attrs.style, /^text;/);
+  assert.match(loopLabel.attrs.value, /another set or exercise remains/);
+  assert.ok(Number(loopLabel.geometry.width) > 0 && Number(loopLabel.geometry.height) > 0);
+  for (const vertex of vertices) if (vertex.attrs.id !== loopLabel.attrs.id)
+    assert.equal(overlapsBox(pageBounds(loopLabel, byId), vertex, byId), false, `loop label overlaps activity node ${vertex.attrs.id}`);
 });
 
 test('use-case actors keep native symbol proportions and separate label sizing', () => {
@@ -121,22 +138,22 @@ test('use-case associations are undirected and use distinct explicit ports and r
   const { cells, byId } = render('usecase-routing.json');
   const associations = cells.filter(cell => cell.edge && cell.attrs.id.startsWith('relationship_athlete-'));
   assert.equal(associations.length, 5);
-  const exitPorts = new Set(), ownedSegments = new Map();
-  const obstacles = cells.filter(cell => cell.vertex && cell.attrs.parent === '1' && cell.attrs.id !== 'system_boundary');
+  const exitPorts = new Set(), ownedSegments = [];
+  const obstacles = cells.filter(cell => cell.vertex && cell.attrs.id !== 'system_boundary');
   for (const edge of associations) {
     assert.match(edge.attrs.style, /exitX=[-\d.]+/);
     assert.match(edge.attrs.style, /entryX=[-\d.]+/);
     assert.match(edge.attrs.style, /startArrow=none;/);
     assert.match(edge.attrs.style, /endArrow=none;/);
     exitPorts.add(edge.attrs.style.match(/exitY=([^;]+)/)?.[1]);
-    assert.ok(points(edge).length >= 2, `${edge.attrs.id} needs an explicit route around other cases and labels`);
     const route = fullRoute(edge, byId);
     for (let i = 1; i < route.length; i++) {
       assert.ok(route[i - 1].x === route[i].x || route[i - 1].y === route[i].y,
         `${edge.attrs.id} has a diagonal segment`);
-      const segment = [route[i - 1], route[i]], key = segmentKey(segment);
-      assert.ok(!ownedSegments.has(key), `${edge.attrs.id} shares a route segment with ${ownedSegments.get(key)}`);
-      ownedSegments.set(key, edge.attrs.id);
+      const segment = [route[i - 1], route[i]];
+      for (const previous of ownedSegments) assert.equal(overlapsPositiveLength(segment, previous.segment), false,
+        `${edge.attrs.id} shares a route segment with ${previous.edgeId}`);
+      ownedSegments.push({ segment, edgeId: edge.attrs.id });
       for (const vertex of obstacles) {
         if (vertex.attrs.id === edge.attrs.source || vertex.attrs.id === edge.attrs.target) continue;
         assert.ok(!crossesVertex(segment, vertex, byId), `${edge.attrs.id} crosses unrelated obstacle/label ${vertex.attrs.id}`);
@@ -157,20 +174,33 @@ test('source-backed FitTrackAI use case remains top-level and does not invent in
   assert.ok(associations.every(edge => /startArrow=none;/.test(edge.attrs.style) && /endArrow=none;/.test(edge.attrs.style)));
 });
 
+test('explicit include, extend, and generalization keep their UML labels and connector styles', () => {
+  const { cells, byId } = render('usecase-relations.json');
+  assert.match(byId.get('relationship_include-start-plan').attrs.style, /dashed=1;.*endArrow=open;endFill=0;/);
+  assert.match(byId.get('relationship_extend-track-history').attrs.style, /dashed=1;.*endArrow=open;endFill=0;/);
+  assert.match(byId.get('relationship_generalize-history-plans').attrs.style, /endArrow=block;endFill=0;/);
+  assert.match(byId.get('relationship_label_include-start-plan').attrs.value, /«include»/);
+  assert.match(byId.get('relationship_label_extend-track-history').attrs.value, /«extend»/);
+  assert.ok(cells.filter(cell => cell.edge && cell.attrs.id.startsWith('relationship_')).length === 3);
+});
+
 test('activity fixture preserves branch merge and a real loop-back transition', () => {
   const source = readJson(path.join(fixtures, 'activity-routing.json'));
   const fitTrackActivity = readJson(path.join(root, 'examples/activity.json'));
   assert.ok(source.transitions.some(edge => edge.from === 'planned' && edge.to === 'merge'));
   assert.ok(source.transitions.some(edge => edge.from === 'quick' && edge.to === 'merge'));
-  assert.ok(source.transitions.some(edge => edge.from === 'track' && edge.to === 'track'), 'loop must be a directed return transition, not just a loop label');
+  assert.ok(source.transitions.some(edge => edge.from === 'local' && edge.to === 'track') && source.transitions.some(edge => edge.from === 'track' && edge.to === 'local'),
+    'loop must be a directed path through tracking state and back, not just a loop label');
   assert.ok(fitTrackActivity.transitions.some(edge => edge.from === 'sets' && edge.to === 'local'), 'FitTrackAI repeat must return to the tracking step');
   assert.equal(fitTrackActivity.partitions, undefined, 'source evidence contains no activity partitions');
   const { cells } = render('activity-routing.json');
   const edges = cells.filter(cell => cell.edge && cell.attrs.id.startsWith('transition_'));
   assert.ok(edges.some(edge => edge.attrs.source === 'activity_planned' && edge.attrs.target === 'activity_merge'));
   assert.ok(edges.some(edge => edge.attrs.source === 'activity_quick' && edge.attrs.target === 'activity_merge'));
-  assert.ok(edges.some(edge => edge.attrs.source === 'activity_track' && edge.attrs.target === 'activity_track'));
-  assert.ok(points(edges.find(edge => edge.attrs.source === 'activity_track' && edge.attrs.target === 'activity_track')).length >= 2,
+  assert.ok(edges.some(edge => edge.attrs.source === 'activity_local' && edge.attrs.target === 'activity_track'));
+  const loopBack = edges.find(edge => edge.attrs.source === 'activity_track' && edge.attrs.target === 'activity_local');
+  assert.ok(loopBack);
+  assert.ok(points(loopBack).length >= 1,
     'loop-back must leave and return on a visible orthogonal path');
 });
 
