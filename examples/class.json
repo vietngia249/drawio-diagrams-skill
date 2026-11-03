@@ -1,0 +1,40 @@
+{
+  "type": "class",
+  "title": "FitTrackAI WorkoutsService",
+  "classes": [
+    {
+      "id": "WorkoutsService",
+      "kind": "class",
+      "attributes": [
+        { "name": "db", "type": "PrismaClient", "visibility": "private", "isParameterProperty": true }
+      ],
+      "operations": [
+        { "name": "constructor", "visibility": "public", "parameters": [{ "name": "db", "type": "PrismaClient", "optional": true }], "returnType": "WorkoutsService" },
+        { "name": "createPlan", "visibility": "public", "parameters": [{ "name": "userId", "type": "string" }, { "name": "input", "type": "CreateWorkoutPlanInput" }], "returnType": "Promise<WorkoutPlan>" },
+        { "name": "listPlans", "visibility": "public", "parameters": [{ "name": "userId", "type": "string" }], "returnType": "Promise<WorkoutPlan[]>" },
+        { "name": "getPlanById", "visibility": "public", "parameters": [{ "name": "userId", "type": "string" }, { "name": "planId", "type": "string" }], "returnType": "Promise<WorkoutPlan | null>" },
+        { "name": "deletePlan", "visibility": "public", "parameters": [{ "name": "userId", "type": "string" }, { "name": "planId", "type": "string" }], "returnType": "Promise<boolean | null>" },
+        { "name": "startSession", "visibility": "public", "parameters": [{ "name": "userId", "type": "string" }, { "name": "input", "type": "StartWorkoutSessionInput" }], "returnType": "Promise<WorkoutSession>" },
+        { "name": "getSessionById", "visibility": "public", "parameters": [{ "name": "userId", "type": "string" }, { "name": "sessionId", "type": "string" }], "returnType": "Promise<WorkoutSession | null>" },
+        { "name": "logSet", "visibility": "public", "parameters": [{ "name": "userId", "type": "string" }, { "name": "sessionId", "type": "string" }, { "name": "input", "type": "UpdateSessionSetInput" }], "returnType": "Promise<ExerciseSet>" },
+        { "name": "completeSession", "visibility": "public", "parameters": [{ "name": "userId", "type": "string" }, { "name": "sessionId", "type": "string" }, { "name": "input", "type": "CompleteSessionInput" }], "returnType": "Promise<WorkoutSession | null>" },
+        { "name": "listSessions", "visibility": "public", "parameters": [{ "name": "userId", "type": "string" }, { "name": "limit", "type": "number", "default": 20 }, { "name": "offset", "type": "number", "default": 0 }], "returnType": "Promise<{ items: WorkoutSession[]; total: number; limit: number; offset: number; hasMore: boolean }>" }
+      ]
+    },
+    { "id": "PrismaClient", "kind": "external", "attributes": [], "operations": [] },
+    { "id": "CreateWorkoutPlanInput", "kind": "datatype", "attributes": [], "operations": [] },
+    { "id": "StartWorkoutSessionInput", "kind": "datatype", "attributes": [], "operations": [] },
+    { "id": "UpdateSessionSetInput", "kind": "datatype", "attributes": [], "operations": [] },
+    { "id": "CompleteSessionInput", "kind": "datatype", "attributes": [], "operations": [] },
+    { "id": "WorkoutPlan", "kind": "external", "attributes": [], "operations": [] },
+    { "id": "WorkoutSession", "kind": "external", "attributes": [], "operations": [] },
+    { "id": "ExerciseSet", "kind": "external", "attributes": [], "operations": [] }
+  ],
+  "relationships": [
+    { "id": "db-dependency", "type": "dependency", "from": "WorkoutsService", "to": "PrismaClient", "label": "uses" },
+    { "id": "create-input", "type": "dependency", "from": "WorkoutsService", "to": "CreateWorkoutPlanInput" },
+    { "id": "start-input", "type": "dependency", "from": "WorkoutsService", "to": "StartWorkoutSessionInput" },
+    { "id": "set-input", "type": "dependency", "from": "WorkoutsService", "to": "UpdateSessionSetInput" },
+    { "id": "complete-input", "type": "dependency", "from": "WorkoutsService", "to": "CompleteSessionInput" }
+  ]
+}
