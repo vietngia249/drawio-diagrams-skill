@@ -70,12 +70,18 @@ test('dense ERD routes keep distinct explicit tracks and clear entity rows and r
   const { cells } = render('erd-routing-stress.json');
   const vertices = cells.filter(cell => cell.vertex), edges = cells.filter(cell => cell.edge), vertexById = byId(cells);
   assert.equal(edges.length, 8);
-  const tracks = [];
+  const tracks = [], endpointPorts = new Map();
   for (const edge of edges) {
     const points = edge.geometry.points.filter(point => !point.as || point.as === 'points').map(point => ({ x: Number(point.x), y: Number(point.y) }));
     assert.ok(points.length >= 2, `${edge.attrs.id} must serialize its explicit route instead of relying on automatic routing`);
     const source = vertexById.get(edge.attrs.source), target = vertexById.get(edge.attrs.target);
     const route = [portPoint(edge, source, 'source'), ...points, portPoint(edge, target, 'target')];
+    for (const [end, cell] of [['source', source], ['target', target]]) {
+      const x = styleNumber(edge.attrs.style, `${end === 'source' ? 'exit' : 'entry'}X`), y = styleNumber(edge.attrs.style, `${end === 'source' ? 'exit' : 'entry'}Y`);
+      const side = x === 0 ? 'west' : x === 1 ? 'east' : y === 0 ? 'north' : 'south', key = `${cell.attrs.id}:${side}`;
+      if (!endpointPorts.has(key)) endpointPorts.set(key, []);
+      endpointPorts.get(key).push({ edge: edge.attrs.id, point: portPoint(edge, cell, end) });
+    }
     assert.ok(route.every((point, index) => index === 0 || point.x === route[index - 1].x || point.y === route[index - 1].y), `${edge.attrs.id} is orthogonal`);
     for (let i = 1; i < route.length; i++) {
       const a = route[i - 1], b = route[i];
@@ -87,6 +93,10 @@ test('dense ERD routes keep distinct explicit tracks and clear entity rows and r
     }
     assert.ok(vertexById.has(edge.attrs.source) && vertexById.has(edge.attrs.target));
   }
+  for (const [key, ports] of endpointPorts) for (let i = 0; i < ports.length; i++) for (let j = i + 1; j < ports.length; j++) {
+    const verticalSide = key.endsWith(':west') || key.endsWith(':east'), separation = Math.abs(verticalSide ? ports[i].point.y - ports[j].point.y : ports[i].point.x - ports[j].point.x);
+    assert.ok(separation >= 5, `${key} endpoints ${ports[i].edge}/${ports[j].edge} are only ${separation}px apart`);
+  }
   for (let i = 0; i < tracks.length; i++) for (let j = i + 1; j < tracks.length; j++) {
     if (tracks[i].edge === tracks[j].edge) continue;
     const a = tracks[i], b = tracks[j];
@@ -94,7 +104,8 @@ test('dense ERD routes keep distinct explicit tracks and clear entity rows and r
     if (horizontal || vertical) {
       const aMin = horizontal ? Math.min(a.a.x, a.b.x) : Math.min(a.a.y, a.b.y), aMax = horizontal ? Math.max(a.a.x, a.b.x) : Math.max(a.a.y, a.b.y);
       const bMin = horizontal ? Math.min(b.a.x, b.b.x) : Math.min(b.a.y, b.b.y), bMax = horizontal ? Math.max(b.a.x, b.b.x) : Math.max(b.a.y, b.b.y);
-      if (horizontal ? a.a.y === b.a.y : a.a.x === b.a.x) assert.ok(Math.min(aMax, bMax) <= Math.max(aMin, bMin), `${a.edge} and ${b.edge} share a positive-length route segment`);
+      const overlap = Math.min(aMax, bMax) - Math.max(aMin, bMin);
+      if (overlap > 0) assert.ok(Math.abs(horizontal ? a.a.y - b.a.y : a.a.x - b.a.x) >= 5, `${a.edge} and ${b.edge} have less than 4px visible gap over ${overlap}px of parallel routing: ${JSON.stringify({a,b})}`);
     }
   }
   const entities = vertices.filter(cell => /^ent_/.test(cell.attrs.id) && !/_attr_\d+$/.test(cell.attrs.id));

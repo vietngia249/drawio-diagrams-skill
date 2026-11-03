@@ -220,6 +220,7 @@ export function renderErd(data, styles = {}) {
   const longestLabel = Math.max(0, ...relations.map(relation => relation.name ? textBox(String(relation.name), Number(style.relation?.fontSize ?? fontSize), 70, 190).width : 0));
   const routeMargin = 56 + longestLabel + relations.length * 12;
   const basePage = { width: Math.max(inferredPage.width, maxX + routeMargin, data.page?.width ?? 0), height: Math.max(inferredPage.height, maxY + routeMargin, data.page?.height ?? 0) };
+  const relationStrokeWidth = Number(style.relation?.strokeWidth ?? 1), minimumRouteGap = relationStrokeWidth + 4;
   const clearance = 14, routeClearance = 2, portGroups = new Map();
   for (const record of relationRecords) for (const end of ['source', 'target']) {
     const cell = record[end], side = record[`${end}Side`], key = `${cell.id}\0${side}`;
@@ -241,7 +242,7 @@ export function renderErd(data, styles = {}) {
           : side === 'south' ? { x: point.x, y: point.y + clearance + 2 }
             : { x: point.x, y: point.y - clearance - 2 };
       const anchorId = `route_anchor_${record.index}_${end}`;
-      routeObstacles.push({ id: anchorId, kind: 'helper', bounds: { x: anchor.x, y: anchor.y, width: 0, height: 0 } });
+      routeObstacles.push({ id: anchorId, kind: 'helper', blocksRoute: false, bounds: { x: anchor.x, y: anchor.y, width: 0, height: 0 } });
       record[`${end}Port`] = { nodeId: cell.id, side, offset, point, anchor, anchorId };
     }
   }
@@ -258,7 +259,7 @@ export function renderErd(data, styles = {}) {
     return pairCounts.get(pairKey(b)) - pairCounts.get(pairKey(a)) || bDistance - aDistance || a.index - b.index;
   });
   rank.forEach((record, index) => { record.routeId = `route_${String(index).padStart(4, '0')}`; requests.find(request => request.id === record.id).id = record.routeId; });
-  const routed = routeOrthogonalEdges({ obstacles: routeObstacles, edges: requests, page: basePage, clearance: routeClearance });
+  const routed = routeOrthogonalEdges({ obstacles: routeObstacles, edges: requests, page: basePage, clearance: routeClearance, minimumRouteGap });
   const routeErrors = routed.diagnostics.filter(diagnostic => diagnostic.severity === 'error');
   if (routeErrors.length) throw new DiagramInputError('ERD route planning failed', routeErrors);
   const recordByRouteId = new Map(relationRecords.map(record => [record.routeId, record]));
@@ -266,7 +267,7 @@ export function renderErd(data, styles = {}) {
     const record = recordByRouteId.get(route.edgeId);
     return [record.id, { ...route, sourcePort: record.sourcePort, targetPort: record.targetPort, points: [route.sourcePort.point, ...route.points, route.targetPort.point] }];
   }));
-  const edgeStyleBase = `edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;jettySize=auto;strokeColor=${style.relation?.strokeColor ?? '#000000'};strokeWidth=${style.relation?.strokeWidth ?? 1};`;
+  const edgeStyleBase = `edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;jettySize=auto;strokeColor=${style.relation?.strokeColor ?? '#000000'};strokeWidth=${relationStrokeWidth};`;
   const placedLabels = [], routeLabels = new Map();
   for (const record of relationRecords) {
     if (!record.relation.name) continue;
