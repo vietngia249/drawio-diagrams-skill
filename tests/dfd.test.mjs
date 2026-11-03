@@ -2,16 +2,22 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {renderDfd} from '../scripts/dfd.mjs';
+import {serializeCells} from '../scripts/common.mjs';
 
 const style=JSON.parse(readFileSync(new URL('../scripts/style.json',import.meta.url),'utf8'));
 const model=JSON.parse(readFileSync(new URL('./fixtures/dfd-fittrackai-logical-level1.json',import.meta.url),'utf8'));
 const physical=JSON.parse(readFileSync(new URL('./fixtures/dfd-fittrackai-physical-level1.json',import.meta.url),'utf8'));
-const render=(data=model)=>renderDfd(data,style).join('\n');
+const stress=JSON.parse(readFileSync(new URL('./fixtures/dfd-parallel-reverse.json',import.meta.url),'utf8'));
+const render=(data=model)=>serializeCells(renderDfd(data,style).cells).join('\n');
 const cells=xml=>[...xml.matchAll(/<mxCell\b[\s\S]*?<\/mxCell>/g)].map(match=>match[0]);
 const attr=(cell,name)=>cell.match(new RegExp(`\\b${name}="([^"]*)"`))?.[1]??'';
 const value=cell=>attr(cell,'value').replaceAll('&lt;','<').replaceAll('&gt;','>').replaceAll('&amp;','&').replaceAll('&quot;','"');
 const waypoints=cell=>[...cell.matchAll(/<mxPoint\b[^>]*\bx="([^"]+)"[^>]*\by="([^"]+)"/g)].map(m=>[Number(m[1]),Number(m[2])]);
 const rectOf=cell=>{const g=cell.match(/<mxGeometry\b([^>]*)\/>/);if(!g)return null;const a={};for(const [,k,v] of g[1].matchAll(/(x|y|width|height)="([^"]+)"/g))a[k]=Number(v);return a};
+const styleNum=(cell,key)=>Number(attr(cell,'style').match(new RegExp(`(?:^|;)${key}=([\\d.]+)`))?.[1]);
+const portPoint=(cell,node,which)=>{const b=rectOf(node),x=styleNum(cell,`${which}X`),y=styleNum(cell,`${which}Y`);return [b.x+b.width*x,b.y+b.height*y]};
+const crossesRect=(a,b,r)=>a[0]===b[0]?a[0]>r.x&&a[0]<r.x+r.width&&Math.max(Math.min(a[1],b[1]),r.y)<Math.min(Math.max(a[1],b[1]),r.y+r.height):a[1]===b[1]&&a[1]>r.y&&a[1]<r.y+r.height&&Math.max(Math.min(a[0],b[0]),r.x)<Math.min(Math.max(a[0],b[0]),r.x+r.width);
+const sharesTrack=(a,b,c,d)=>a[0]===b[0]&&c[0]===d[0]&&a[0]===c[0]?Math.max(Math.min(a[1],b[1]),Math.min(c[1],d[1]))<Math.min(Math.max(a[1],b[1]),Math.max(c[1],d[1])):a[1]===b[1]&&c[1]===d[1]&&a[1]===c[1]&&Math.max(Math.min(a[0],b[0]),Math.min(c[0],d[0]))<Math.min(Math.max(a[0],b[0]),Math.max(c[0],d[0]));
 
 test('example declares a logical Level 1 DFD and names the perspective',()=>{
   const example=JSON.parse(readFileSync(new URL('../examples/dfd.json',import.meta.url),'utf8'));
@@ -66,30 +72,45 @@ test('selected Yourdon/Coad convention keeps all flows directed and process-medi
 });
 
 test('reverse and parallel edges have distinct ports and do not share route segments',()=>{
-  const data={type:'dfd',nodes:[{id:'a',kind:'externalEntity',label:'Athlete'},{id:'p',kind:'process',label:'1. Record session'}],flows:[
-    {id:'in-a',from:'a',to:'p',label:'Workout selection'},{id:'in-b',from:'a',to:'p',label:'Set details'},
-    {id:'out-a',from:'p',to:'a',label:'Session summary'},{id:'out-b',from:'p',to:'a',label:'Completion result'}
-  ]};
-  const edges=cells(render(data)).filter(c=>attr(c,'edge')==='1');
-  assert.equal(edges.length,4);
+  const edges=cells(render(stress)).filter(c=>attr(c,'edge')==='1');
+  assert.equal(edges.length,stress.flows.length);
   const ports=edges.map(c=>[...attr(c,'style').matchAll(/(?:exit|entry)([XY])=([\d.]+)/g)].map(m=>m[0]).join(';'));
   assert.equal(new Set(ports).size,4,'each flow gets distinct source and target ports');
-  const routes=edges.map(waypoints);
-  assert.ok(routes.every(r=>r.length>=2),'each edge has explicit route bends');
-  const segments=routes.flatMap((route,i)=>route.slice(1).map((p,j)=>({i,a:route[j],b:p})));
-  for(let i=0;i<segments.length;i++)for(let j=i+1;j<segments.length;j++)if(segments[i].i!==segments[j].i){
-    const a=segments[i],b=segments[j];
-    assert.notDeepEqual([a.a,a.b],[b.a,b.b],'distinct edges must not share a route segment');
-  }
+  const nodes=cells(render(stress)).filter(c=>attr(c,'vertex')==='1'&&attr(c,'id').startsWith('dfd_node_'));
+  const routes=edges.map(edge=>{
+    const source=nodes.find(node=>attr(node,'id')===attr(edge,'source')),target=nodes.find(node=>attr(node,'id')===attr(edge,'target'));
+    const points=[portPoint(edge,source,'exit'),...waypoints(edge),portPoint(edge,target,'entry')];
+    assert.ok(points.length>=4,'each edge has distinct port escapes and explicit bends');
+    return points.slice(1).map((point,i)=>[points[i],point]);
+  });
+  for(let i=0;i<routes.length;i++)for(let j=i+1;j<routes.length;j++)for(const [a,b] of routes[i])for(const [c,d] of routes[j])assert.equal(sharesTrack(a,b,c,d),false,'distinct edges must not share a positive-length route segment');
 });
 
 test('routes and labels avoid unrelated nodes, labels, and routes',()=>{
   const out=render(),all=cells(out),vertices=all.filter(c=>attr(c,'vertex')==='1'),edges=all.filter(c=>attr(c,'edge')==='1');
   const labels=vertices.filter(c=>attr(c,'id').startsWith('dfd_flow_label_'));
+  const nodes=vertices.filter(c=>attr(c,'id').startsWith('dfd_node_'));
   assert.equal(labels.length,model.flows.length);
   assert.ok(edges.every(e=>waypoints(e).length>=2),'routes are explicit and inspectable');
   for(const label of labels)assert.ok(rectOf(label),'flow label has measurable geometry');
-  for(const edge of edges)assert.ok(/exitX=|entryX=/.test(attr(edge,'style')),'edge declares explicit ports');
+  for(const edge of edges){
+    assert.ok(/exitX=|entryX=/.test(attr(edge,'style')),'edge declares explicit ports');
+    const source=nodes.find(node=>attr(node,'id')===attr(edge,'source')),target=nodes.find(node=>attr(node,'id')===attr(edge,'target'));
+    const route=[portPoint(edge,source,'exit'),...waypoints(edge),portPoint(edge,target,'entry')];
+    for(let i=1;i<route.length;i++)assert.ok(route[i][0]===route[i-1][0]||route[i][1]===route[i-1][1],'route segment is orthogonal');
+    for(const node of nodes)if(![attr(edge,'source'),attr(edge,'target')].includes(attr(node,'id'))){
+      for(let i=1;i<route.length;i++)assert.equal(crossesRect(route[i-1],route[i],rectOf(node)),false,`route crosses unrelated node ${attr(node,'id')}`);
+    }
+    const ownLabel=labels.find(label=>attr(label,'id')===attr(edge,'id').replace(/^dfd_flow_/,'dfd_flow_label_'));
+    for(const label of labels)if(label!==ownLabel){
+      const box=rectOf(label);
+      for(let i=1;i<route.length;i++)assert.equal(crossesRect(route[i-1],route[i],box),false,`route crosses unrelated label ${attr(label,'id')}`);
+    }
+  }
+  for(let i=0;i<labels.length;i++)for(let j=i+1;j<labels.length;j++){
+    const a=rectOf(labels[i]),b=rectOf(labels[j]);
+    assert.ok(a.x+a.width<=b.x||b.x+b.width<=a.x||a.y+a.height<=b.y||b.y+b.height<=a.y,'flow labels overlap');
+  }
 });
 
 test('Level 1 layout stays compact and sizes nodes and labels for readable text',()=>{
