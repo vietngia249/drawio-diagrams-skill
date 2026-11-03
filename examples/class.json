@@ -9,26 +9,23 @@
         { "name": "db", "type": "PrismaClient", "visibility": "private", "isParameterProperty": true }
       ],
       "operations": [
-        { "name": "constructor", "visibility": "public", "parameters": [{ "name": "db", "type": "PrismaClient", "optional": true }], "returnType": "WorkoutsService" },
-        { "name": "createPlan", "visibility": "public", "parameters": [{ "name": "userId", "type": "string" }, { "name": "input", "type": "CreateWorkoutPlanInput" }], "returnType": "Promise<Prisma.WorkoutPlanGetPayload<{ include: { exercises: { include: { exercise: true } } } }>>" },
-        { "name": "listPlans", "visibility": "public", "parameters": [{ "name": "userId", "type": "string" }], "returnType": "Promise<Prisma.WorkoutPlanGetPayload<{ include: { exercises: { include: { exercise: true } } } }>[]>" },
-        { "name": "getPlanById", "visibility": "public", "parameters": [{ "name": "userId", "type": "string" }, { "name": "planId", "type": "string" }], "returnType": "Promise<Prisma.WorkoutPlanGetPayload<{ include: { exercises: { include: { exercise: true } } } }> | null>" },
-        { "name": "deletePlan", "visibility": "public", "parameters": [{ "name": "userId", "type": "string" }, { "name": "planId", "type": "string" }], "returnType": "Promise<boolean | null>" },
-        { "name": "startSession", "visibility": "public", "parameters": [{ "name": "userId", "type": "string" }, { "name": "input", "type": "StartWorkoutSessionInput" }], "returnType": "Promise<Prisma.WorkoutSessionGetPayload<{ include: { exercises: { include: { exercise: true; sets: true } } } }>>" },
-        { "name": "getSessionById", "visibility": "public", "parameters": [{ "name": "userId", "type": "string" }, { "name": "sessionId", "type": "string" }], "returnType": "Promise<Prisma.WorkoutSessionGetPayload<{ include: { exercises: { include: { exercise: true; sets: true } } } }> | null>" },
-        { "name": "logSet", "visibility": "public", "parameters": [{ "name": "userId", "type": "string" }, { "name": "sessionId", "type": "string" }, { "name": "input", "type": "UpdateSessionSetInput" }], "returnType": "Promise<Prisma.ExerciseSet>" },
-        { "name": "completeSession", "visibility": "public", "parameters": [{ "name": "userId", "type": "string" }, { "name": "sessionId", "type": "string" }, { "name": "input", "type": "CompleteSessionInput" }], "returnType": "Promise<Prisma.WorkoutSessionGetPayload<{ include: { exercises: { include: { exercise: true; sets: true } } } }> | null>" },
-        { "name": "listSessions", "visibility": "public", "parameters": [{ "name": "userId", "type": "string" }, { "name": "limit", "type": "number", "default": 20 }, { "name": "offset", "type": "number", "default": 0 }], "returnType": "Promise<{ items: Prisma.WorkoutSessionGetPayload<{ include: { exercises: { include: { exercise: true; sets: true } } } }>[]; total: number; limit: number; offset: number; hasMore: boolean }>" }
+        { "name": "constructor", "visibility": "public", "parameters": [{ "name": "db", "type": "PrismaClient", "optional": true }] },
+        { "name": "createPlan", "visibility": "public", "parameters": [{ "name": "userId", "type": "string" }, { "name": "input", "type": "CreateWorkoutPlanInput" }] },
+        { "name": "listPlans", "visibility": "public", "parameters": [{ "name": "userId", "type": "string" }] },
+        { "name": "getPlanById", "visibility": "public", "parameters": [{ "name": "userId", "type": "string" }, { "name": "planId", "type": "string" }] },
+        { "name": "deletePlan", "visibility": "public", "parameters": [{ "name": "userId", "type": "string" }, { "name": "planId", "type": "string" }] },
+        { "name": "startSession", "visibility": "public", "parameters": [{ "name": "userId", "type": "string" }, { "name": "input", "type": "StartWorkoutSessionInput" }] },
+        { "name": "getSessionById", "visibility": "public", "parameters": [{ "name": "userId", "type": "string" }, { "name": "sessionId", "type": "string" }] },
+        { "name": "logSet", "visibility": "public", "parameters": [{ "name": "userId", "type": "string" }, { "name": "sessionId", "type": "string" }, { "name": "input", "type": "UpdateSessionSetInput" }] },
+        { "name": "completeSession", "visibility": "public", "parameters": [{ "name": "userId", "type": "string" }, { "name": "sessionId", "type": "string" }, { "name": "input", "type": "CompleteSessionInput" }] },
+        { "name": "listSessions", "visibility": "public", "parameters": [{ "name": "userId", "type": "string" }, { "name": "limit", "type": "number", "default": 20 }, { "name": "offset", "type": "number", "default": 0 }] }
       ]
     },
     { "id": "PrismaClient", "kind": "external", "attributes": [], "operations": [] },
     { "id": "CreateWorkoutPlanInput", "kind": "datatype", "attributes": [], "operations": [] },
     { "id": "StartWorkoutSessionInput", "kind": "datatype", "attributes": [], "operations": [] },
     { "id": "UpdateSessionSetInput", "kind": "datatype", "attributes": [], "operations": [] },
-    { "id": "CompleteSessionInput", "kind": "datatype", "attributes": [], "operations": [] },
-    { "id": "WorkoutPlan", "kind": "external", "attributes": [], "operations": [] },
-    { "id": "WorkoutSession", "kind": "external", "attributes": [], "operations": [] },
-    { "id": "ExerciseSet", "kind": "external", "attributes": [], "operations": [] }
+    { "id": "CompleteSessionInput", "kind": "datatype", "attributes": [], "operations": [] }
   ],
   "relationships": [
     { "id": "db-dependency", "type": "dependency", "from": "WorkoutsService", "to": "PrismaClient", "label": "uses" },

@@ -59,6 +59,17 @@ function normalizeClasses(data) {
 
 function memberWidth(models, style) {
   const font = Number(style.fontSize ?? 13);
+  const wrapLine = (value, maxWidth) => {
+    const words = String(value).split(/\s+/), lines = [];
+    let line = '';
+    for (const word of words) {
+      const candidate = line ? `${line} ${word}` : word;
+      if (line && textWidth(candidate, font) > maxWidth) { lines.push(line); line = word; }
+      else line = candidate;
+    }
+    if (line) lines.push(line);
+    return lines.length ? lines : [''];
+  };
   return models.map(model => {
     const header = `${model.stereotype ? `<<${model.stereotype}>> ` : ''}${model.displayName}`;
     const attrs = model.attributes.map(attribute => `${attribute.visibility} ${attribute.name}${attribute.type ? ` : ${attribute.type}` : ''}`);
@@ -66,12 +77,14 @@ function memberWidth(models, style) {
       const params = operation.parameters.map(parameter => `${parameter.name}${parameter.optional ? '?' : ''} : ${text(parameter.type)}`).join(', ');
       return `${operation.visibility} ${operation.name}(${params})${operation.returnType ? ` : ${operation.returnType}` : ''}`;
     });
-    const width = Math.max(240, Math.min(900, Math.max(textWidth(header, font), ...attrs.map(line => textWidth(line, font)), ...operations.map(line => textWidth(line, font))) + 42));
-    const lineHeight = Math.ceil(font * 1.65 + 6);
-    const wrappedLineCount = lines => Math.max(1, lines.reduce((count, line) => count + Math.max(1, Math.ceil(textWidth(line, font) / (width - 24))), 0));
-    const attrLineCount = wrappedLineCount(attrs), operationLineCount = wrappedLineCount(operations);
-    const height = 42 + attrLineCount * lineHeight + 2 + operationLineCount * lineHeight;
-    return { ...model, header, attrLines: attrs, operationLines: operations, width, height, headerHeight: 42, attrHeight: attrLineCount * lineHeight, operationHeight: operationLineCount * lineHeight };
+    const naturalWidth = Math.max(textWidth(header, font), ...attrs.map(line => textWidth(line, font)), ...operations.map(line => textWidth(line, font))) + 42;
+    const width = Math.max(240, Math.min(620, naturalWidth));
+    const lineHeight = Math.ceil(font * 1.5 + 5), contentWidth = width - 36;
+    const attrLines = attrs.flatMap(line => wrapLine(line, contentWidth));
+    const operationLines = operations.flatMap(line => wrapLine(line, contentWidth));
+    const attrHeight = Math.max(lineHeight, attrLines.length * lineHeight), operationHeight = Math.max(lineHeight, operationLines.length * lineHeight);
+    const height = 42 + attrHeight + 2 + operationHeight;
+    return { ...model, header, attrLines, operationLines, width, height, headerHeight: 42, attrHeight, operationHeight };
   });
 }
 
@@ -133,11 +146,24 @@ export function renderClass(data, styles = {}) {
   const cols = Math.max(1, Math.ceil(Math.sqrt(classes.length))), rows = Math.ceil(classes.length / cols);
   const colWidths = Array.from({ length: cols }, (_, col) => Math.max(...classes.filter((_, index) => index % cols === col).map(model => model.width), 0));
   const rowHeights = Array.from({ length: rows }, (_, row) => Math.max(...classes.slice(row * cols, (row + 1) * cols).map(model => model.height), 0));
+  const edgeDemand = (axis, boundary) => {
+    const resolveClass = reference => classes.find(model => model.key === reference || model.displayName === reference);
+    const indexFor = model => axis === 'x' ? classes.indexOf(model) % cols : Math.floor(classes.indexOf(model) / cols);
+    const crossing = relationships.filter(relation => {
+      const a = indexFor(resolveClass(relation.from)), b = indexFor(resolveClass(relation.to));
+      return a >= 0 && b >= 0 && a !== b && Math.min(a, b) <= boundary && Math.max(a, b) > boundary;
+    });
+    const maxLabel = Math.max(0, ...crossing.map(relation => relation.label ? textWidth(relation.label, fontSize) : 0));
+    return 42 + crossing.length * 18 + Math.min(150, maxLabel);
+  };
+  const colGaps = Array.from({ length: Math.max(0, cols - 1) }, (_, boundary) => Math.max(72, edgeDemand('x', boundary)));
+  const rowGaps = Array.from({ length: Math.max(0, rows - 1) }, (_, boundary) => Math.max(72, edgeDemand('y', boundary)));
   const colX = [], rowY = [];
-  for (let col = 0; col < cols; col++) colX[col] = 100 + colWidths.slice(0, col).reduce((sum, width) => sum + width + 430, 0);
-  for (let row = 0; row < rows; row++) rowY[row] = 100 + rowHeights.slice(0, row).reduce((sum, height) => sum + height + 320, 0);
+  for (let col = 0; col < cols; col++) colX[col] = 72 + colWidths.slice(0, col).reduce((sum, width, index) => sum + width + colGaps[index], 0);
+  for (let row = 0; row < rows; row++) rowY[row] = 72 + rowHeights.slice(0, row).reduce((sum, height, index) => sum + height + rowGaps[index], 0);
   for (const [index, model] of classes.entries()) { model.x = colX[index % cols]; model.y = rowY[Math.floor(index / cols)]; }
-  const inferredPage = { width: Math.ceil((colX.at(-1) ?? 0) + colWidths.at(-1) + 700), height: Math.ceil((rowY.at(-1) ?? 0) + rowHeights.at(-1) + 700) };
+  const pageMargin = 72 + relationships.length * 8;
+  const inferredPage = { width: Math.ceil((colX.at(-1) ?? 0) + colWidths.at(-1) + pageMargin), height: Math.ceil((rowY.at(-1) ?? 0) + rowHeights.at(-1) + pageMargin) };
   const basePage = { width: Math.max(inferredPage.width, data.page?.width ?? 0), height: Math.max(inferredPage.height, data.page?.height ?? 0) };
   const cells = [], obstacles = [];
   const classStyle = `swimlane;horizontal=1;startSize=42;html=1;whiteSpace=wrap;align=center;verticalAlign=middle;fontFamily=${style.fontFamily ?? 'Arial,Helvetica,sans-serif'};fontSize=${fontSize};fontStyle=1;fillColor=${fillColor};strokeColor=${strokeColor};strokeWidth=1;container=1;collapsible=0;recursiveResize=0;`;

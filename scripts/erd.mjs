@@ -40,7 +40,7 @@ function textBox(text, fontSize, minWidth = 0, maxWidth = 460) {
   return { width, height: Math.max(36, lines * Math.max(18, fontSize * 1.65) + 8) };
 }
 
-function layoutEntities(entities, attrsByName, style, portCounts, requestedPage) {
+function layoutEntities(entities, attrsByName, style, portCounts, relations, requestedPage) {
   const fontSize = Number(style.fontSize ?? 14), attrFont = Number(style.attribute?.fontSize ?? fontSize);
   const markerLabels = { PK: String(style.primaryKey?.marker ?? 'PK'), FK: String(style.foreignKey?.marker ?? 'FK') };
   const layout = entities.map(entity => {
@@ -55,21 +55,89 @@ function layoutEntities(entities, attrsByName, style, portCounts, requestedPage)
     return { name: entity.name, id: entityId(entity.name), header, rows, width: Math.max(header.width, ...rows.map(row => row.measure.width)), height: header.height + rows.reduce((sum, row) => sum + row.measure.height, 0) };
   });
   const cols = Math.max(1, Math.ceil(Math.sqrt(layout.length))), rows = Math.ceil(layout.length / cols);
+  const entityColumn = new Map(entities.map((entity, index) => [entity.name, index % cols]));
+  const entityRow = new Map(entities.map((entity, index) => [entity.name, Math.floor(index / cols)]));
   const colWidths = Array.from({ length: cols }, (_, col) => Math.max(...layout.filter((_, i) => i % cols === col).map(item => item.width), 0));
   const rowHeights = Array.from({ length: rows }, (_, row) => Math.max(...layout.slice(row * cols, (row + 1) * cols).map(item => item.height), 0));
-  const gapX = requestedPage && cols > 1 ? Math.max(70, (requestedPage.width - 160 - colWidths.reduce((sum, value) => sum + value, 0)) / (cols - 1)) : 650;
-  const gapY = requestedPage && rows > 1 ? Math.max(70, (requestedPage.height - 160 - rowHeights.reduce((sum, value) => sum + value, 0)) / (rows - 1)) : 500;
+  const routeDemand = (axis, boundary) => {
+    const start = relation => axis === 'x' ? entityColumn.get(relation.from ?? relation.a) : entityRow.get(relation.from ?? relation.a);
+    const end = relation => axis === 'x' ? entityColumn.get(relation.to ?? relation.b) : entityRow.get(relation.to ?? relation.b);
+    const crossing = relations.filter(relation => {
+      const a = start(relation), b = end(relation);
+      return a !== undefined && b !== undefined && Math.min(a, b) <= boundary && Math.max(a, b) > boundary;
+    });
+    const labels = crossing.map(relation => relation.name ? textBox(String(relation.name), Number(style.relation?.fontSize ?? fontSize), 70, 190) : { width: 0, height: 0 });
+    return { lanes: crossing.length, labelWidth: Math.max(0, ...labels.map(label => label.width)), labelHeight: Math.max(0, ...labels.map(label => label.height)) };
+  };
+  const xGaps = Array.from({ length: Math.max(0, cols - 1) }, (_, boundary) => {
+    const demand = routeDemand('x', boundary);
+    return Math.max(72, 56 + demand.lanes * 56 + demand.labelWidth);
+  });
+  const yGaps = Array.from({ length: Math.max(0, rows - 1) }, (_, boundary) => {
+    const demand = routeDemand('y', boundary);
+    return Math.max(72, 56 + demand.lanes * 56 + demand.labelHeight);
+  });
+  const gapX = requestedPage && cols > 1
+    ? Math.max(Math.max(...xGaps), (requestedPage.width - 160 - colWidths.reduce((sum, value) => sum + value, 0)) / (cols - 1))
+    : undefined;
+  const gapY = requestedPage && rows > 1
+    ? Math.max(Math.max(...yGaps), (requestedPage.height - 160 - rowHeights.reduce((sum, value) => sum + value, 0)) / (rows - 1))
+    : undefined;
   const colX = [], rowY = [];
-  for (let col = 0; col < cols; col++) colX[col] = 80 + colWidths.slice(0, col).reduce((sum, value) => sum + value + gapX, 0);
-  for (let row = 0; row < rows; row++) rowY[row] = 80 + rowHeights.slice(0, row).reduce((sum, value) => sum + value + gapY, 0);
+  for (let col = 0; col < cols; col++) colX[col] = 80 + colWidths.slice(0, col).reduce((sum, value, index) => sum + value + (gapX ?? xGaps[index]), 0);
+  for (let row = 0; row < rows; row++) rowY[row] = 80 + rowHeights.slice(0, row).reduce((sum, value, index) => sum + value + (gapY ?? yGaps[index]), 0);
   for (const [i, item] of layout.entries()) { item.x = colX[i % cols]; item.y = rowY[Math.floor(i / cols)]; }
-  return { layout, page: { width: Math.ceil((colX.at(-1) ?? 0) + (colWidths.at(-1) ?? 0) + 640), height: Math.ceil((rowY.at(-1) ?? 0) + (rowHeights.at(-1) ?? 0) + 640) } };
+  const longestLabel = Math.max(0, ...relations.map(relation => relation.name ? textBox(String(relation.name), Number(style.relation?.fontSize ?? fontSize), 70, 190).width : 0));
+  const margin = 56 + longestLabel + relations.length * 12;
+  return { layout, page: { width: Math.ceil((colX.at(-1) ?? 0) + (colWidths.at(-1) ?? 0) + margin), height: Math.ceil((rowY.at(-1) ?? 0) + (rowHeights.at(-1) ?? 0) + margin) } };
 }
 
 function portHeight(count) {
   if (count === 0) return 0;
   if (count === 1) return 80;
   return Math.ceil(Math.max(36, 14 / 0.12, 14 * (count - 1) / 0.76) + 2);
+}
+
+function placeRelationLabel(route, label, obstacles, routes, placed, page, clearance) {
+  const width = label.width, height = label.height, distances = [0, 40, 90, 160, 260, 400, 600];
+  const points = [route.sourcePort.point, ...route.points, route.targetPort.point];
+  const routeY = (route.sourcePort.point.y + route.targetPort.point.y) / 2;
+  const isClear = bounds => {
+    if (bounds.x < 0 || bounds.y < 0 || bounds.x + width > page.width || bounds.y + height > page.height || bounds.y + height > routeY - 8) return false;
+    if (obstacles.some(obstacle => overlaps(bounds, obstacle.bounds, clearance / 2)) || placed.some(other => overlaps(bounds, other, 2))) return false;
+    return !routes.some(candidate => {
+      const routePoints = [candidate.sourcePort.point, ...candidate.points, candidate.targetPort.point];
+      return routePoints.slice(1).some((point, segment) => segmentHitsRect(routePoints[segment], point, bounds));
+    });
+  };
+  const segments = points.slice(1).map((b, index) => ({ a: points[index], b, index, horizontal: points[index].y === b.y })).sort((a, b) => Number(b.horizontal) - Number(a.horizontal) || a.index - b.index);
+  for (const { a, b } of segments) {
+    if (a.x === b.x && a.y === b.y) continue;
+    const horizontal = a.y === b.y;
+    const centers = [0.2, 0.35, 0.5, 0.65, 0.8].map(fraction => ({ x: a.x + (b.x - a.x) * fraction, y: a.y + (b.y - a.y) * fraction }));
+    for (const mid of centers) for (const distance of distances) for (const sign of [-1, 1]) {
+      const bounds = horizontal
+        ? { x: mid.x - width / 2, y: mid.y + sign * (height / 2 + clearance + 4 + distance), width, height }
+        : { x: mid.x + sign * (width / 2 + clearance + 4 + distance), y: mid.y - height / 2, width, height };
+      if (isClear(bounds)) return bounds;
+    }
+  }
+  const centerX = (route.sourcePort.point.x + route.targetPort.point.x) / 2;
+  for (let row = 0; row < 8; row++) {
+    const y = routeY - height - clearance - 8 - row * (height + clearance);
+    for (const offset of [0, 50, -50, 110, -110, 180, -180, 260, -260]) {
+      const bounds = { x: centerX + offset - width / 2, y, width, height };
+      if (isClear(bounds)) return bounds;
+    }
+  }
+  return undefined;
+}
+function overlaps(a, b, pad = 0) {
+  return a.x < b.x + b.width + pad && a.x + a.width > b.x - pad && a.y < b.y + b.height + pad && a.y + a.height > b.y - pad;
+}
+function segmentHitsRect(a, b, box) {
+  if (a.x === b.x) return a.x > box.x && a.x < box.x + box.width && Math.max(Math.min(a.y, b.y), box.y) < Math.min(Math.max(a.y, b.y), box.y + box.height);
+  return a.y === b.y && a.y > box.y && a.y < box.y + box.height && Math.max(Math.min(a.x, b.x), box.x) < Math.min(Math.max(a.x, b.x), box.x + box.width);
 }
 
 function endpoint(raw, side, byName, attrRows, relationIndex) {
@@ -113,7 +181,7 @@ export function renderErd(data, styles = {}) {
   }
 
   const style = styles.erd ?? {}, fontSize = Number(style.fontSize ?? 14), attrFont = Number(style.attribute?.fontSize ?? fontSize);
-  const { layout, page: inferredPage } = layoutEntities(entities, attrsByName, style, portCounts, data.page);
+  const { layout, page: inferredPage } = layoutEntities(entities, attrsByName, style, portCounts, relations, data.page);
   const cells = [], obstacles = [], byName = new Map(), attrRows = new Map();
   const entityStroke = style.entity?.strokeColor ?? '#000000', strokeWidth = style.entity?.strokeWidth ?? 1;
   const common = `rounded=0;html=1;whiteSpace=wrap;align=left;verticalAlign=middle;spacingLeft=8;spacingTop=4;spacingBottom=4;fontFamily=${style.fontFamily ?? 'Arial,Helvetica,sans-serif'};fillColor=#ffffff;strokeColor=${entityStroke};strokeWidth=${strokeWidth};`;
@@ -138,34 +206,86 @@ export function renderErd(data, styles = {}) {
     attrRows.set(item.name, attrMap);
   }
 
-  const requests = [], relationRecords = [];
+  const relationRecords = [];
   for (const [index, relation] of relations.entries()) {
     const source = endpoint(relation, 'from', byName, attrRows, index), target = endpoint(relation, 'to', byName, attrRows, index);
     const sourceEntity = byName.get(relation.from ?? relation.a), targetEntity = byName.get(relation.to ?? relation.b);
-    const sourceSide = sourceEntity.x + sourceEntity.width / 2 <= targetEntity.x + targetEntity.width / 2 ? 'east' : 'west';
-    const targetSide = sourceSide === 'east' ? 'west' : 'east';
+    const horizontalOverlap = sourceEntity.x < targetEntity.x + targetEntity.width && sourceEntity.x + sourceEntity.width > targetEntity.x;
+    const sourceSide = horizontalOverlap ? 'west' : sourceEntity.x + sourceEntity.width / 2 < targetEntity.x + targetEntity.width / 2 ? 'east' : 'west';
+    const targetSide = horizontalOverlap ? 'west' : sourceSide === 'east' ? 'west' : 'east';
     const id = `rel_${index}`;
-    requests.push({ id, allowSelfLoop: sourceEntity === targetEntity, source: { nodeId: source.id, port: { side: sourceSide, preferredOffset: 0.18 } }, target: { nodeId: target.id, port: { side: targetSide, preferredOffset: 0.18 } }, label: relation.name ? { id: `rel_label_${index}`, ...textBox(relation.name, Number(style.relation?.fontSize ?? fontSize), 70, 190) } : undefined });
-    relationRecords.push({ id, index, relation, source, target, sourceEntity, targetEntity });
+    relationRecords.push({ id, index, relation, source, target, sourceEntity, targetEntity, sourceSide, targetSide });
   }
   const maxX = Math.max(0, ...layout.map(item => item.x + item.width)), maxY = Math.max(0, ...layout.map(item => item.y + item.height));
-  const basePage = { width: Math.max(inferredPage.width, maxX + 640, data.page?.width ?? 0), height: Math.max(inferredPage.height, maxY + 640, data.page?.height ?? 0) };
-  const routed = routeOrthogonalEdges({ obstacles, edges: requests, page: basePage, clearance: 14 });
+  const longestLabel = Math.max(0, ...relations.map(relation => relation.name ? textBox(String(relation.name), Number(style.relation?.fontSize ?? fontSize), 70, 190).width : 0));
+  const routeMargin = 56 + longestLabel + relations.length * 12;
+  const basePage = { width: Math.max(inferredPage.width, maxX + routeMargin, data.page?.width ?? 0), height: Math.max(inferredPage.height, maxY + routeMargin, data.page?.height ?? 0) };
+  const clearance = 14, routeClearance = 2, portGroups = new Map();
+  for (const record of relationRecords) for (const end of ['source', 'target']) {
+    const cell = record[end], side = record[`${end}Side`], key = `${cell.id}\0${side}`;
+    if (!portGroups.has(key)) portGroups.set(key, []);
+    portGroups.get(key).push({ record, end, cell, side });
+  }
+  const routeObstacles = obstacles.map(obstacle => ({ ...obstacle, bounds: { x: obstacle.bounds.x - (clearance - routeClearance), y: obstacle.bounds.y - (clearance - routeClearance), width: obstacle.bounds.width + 2 * (clearance - routeClearance), height: obstacle.bounds.height + 2 * (clearance - routeClearance) } })), requests = [];
+  for (const group of portGroups.values()) {
+    group.sort((a, b) => a.record.index - b.record.index || a.end.localeCompare(b.end));
+    for (const [index, endpointRecord] of group.entries()) {
+      const { record, end, cell, side } = endpointRecord;
+      const offset = group.length === 1 ? 0.5 : 0.12 + 0.76 * index / (group.length - 1), box = cell.geometry;
+      const point = side === 'east' ? { x: box.x + box.width, y: box.y + box.height * offset }
+        : side === 'west' ? { x: box.x, y: box.y + box.height * offset }
+          : side === 'south' ? { x: box.x + box.width * offset, y: box.y + box.height }
+            : { x: box.x + box.width * offset, y: box.y };
+      const anchor = side === 'east' ? { x: point.x + clearance + 2, y: point.y }
+        : side === 'west' ? { x: point.x - clearance - 2, y: point.y }
+          : side === 'south' ? { x: point.x, y: point.y + clearance + 2 }
+            : { x: point.x, y: point.y - clearance - 2 };
+      const anchorId = `route_anchor_${record.index}_${end}`;
+      routeObstacles.push({ id: anchorId, kind: 'helper', bounds: { x: anchor.x, y: anchor.y, width: 0, height: 0 } });
+      record[`${end}Port`] = { nodeId: cell.id, side, offset, point, anchor, anchorId };
+    }
+  }
+  for (const record of relationRecords) requests.push({ id: record.id, allowSelfLoop: record.sourceEntity === record.targetEntity,
+    source: { nodeId: record.sourcePort.anchorId, port: { side: record.sourcePort.side } },
+    target: { nodeId: record.targetPort.anchorId, port: { side: record.targetPort.side } } });
+  const pairKey = record => [record.sourceEntity.name, record.targetEntity.name].sort().join('\0');
+  const pairCounts = new Map();
+  for (const record of relationRecords) pairCounts.set(pairKey(record), (pairCounts.get(pairKey(record)) ?? 0) + 1);
+  const rank = [...relationRecords].sort((a, b) => {
+    const ac = a.source.geometry, at = a.target.geometry, bc = b.source.geometry, bt = b.target.geometry;
+    const aDistance = Math.abs(ac.x + ac.width / 2 - bt.x - bt.width / 2) + Math.abs(ac.y + ac.height / 2 - bt.y - bt.height / 2);
+    const bDistance = Math.abs(bc.x + bc.width / 2 - at.x - at.width / 2) + Math.abs(bc.y + bc.height / 2 - at.y - at.height / 2);
+    return pairCounts.get(pairKey(b)) - pairCounts.get(pairKey(a)) || bDistance - aDistance || a.index - b.index;
+  });
+  rank.forEach((record, index) => { record.routeId = `route_${String(index).padStart(4, '0')}`; requests.find(request => request.id === record.id).id = record.routeId; });
+  const routed = routeOrthogonalEdges({ obstacles: routeObstacles, edges: requests, page: basePage, clearance: routeClearance });
   const routeErrors = routed.diagnostics.filter(diagnostic => diagnostic.severity === 'error');
   if (routeErrors.length) throw new DiagramInputError('ERD route planning failed', routeErrors);
-  const routeById = new Map(routed.routes.map(route => [route.edgeId, route]));
+  const recordByRouteId = new Map(relationRecords.map(record => [record.routeId, record]));
+  const routeById = new Map(routed.routes.map(route => {
+    const record = recordByRouteId.get(route.edgeId);
+    return [record.id, { ...route, sourcePort: record.sourcePort, targetPort: record.targetPort, points: [route.sourcePort.point, ...route.points, route.targetPort.point] }];
+  }));
   const edgeStyleBase = `edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;jettySize=auto;strokeColor=${style.relation?.strokeColor ?? '#000000'};strokeWidth=${style.relation?.strokeWidth ?? 1};`;
+  const placedLabels = [], routeLabels = new Map();
+  for (const record of relationRecords) {
+    if (!record.relation.name) continue;
+    const route = routeById.get(record.id), label = { id: `rel_label_${record.index}`, ...textBox(String(record.relation.name), Number(style.relation?.fontSize ?? fontSize), 70, 190) };
+    const bounds = placeRelationLabel(route, label, obstacles, [...routeById.values()], placedLabels, basePage, 14);
+    if (!bounds) throw error('ERD_LABEL_ROUTE_UNAVAILABLE', `$.relations[${record.index}].name`, 'no clear page-space position is available for the relation label', record.relation.name);
+    placedLabels.push(bounds); routeLabels.set(record.id, { id: label.id, bounds });
+  }
   for (const record of relationRecords) {
     const { id, relation, index } = record, route = routeById.get(id);
     if (!route) throw error('ERD_ROUTE_MISSING', `$.relations[${index}]`, 'route planner did not return a route');
     const startArrow = cardinality(relation, 'from'), endArrow = cardinality(relation, 'to');
     const relationStyle = `${edgeStyleBase}${startArrow ? `startArrow=${CARDINALITY_ARROW[startArrow]};` : 'startArrow=none;'}${endArrow ? `endArrow=${CARDINALITY_ARROW[endArrow]};` : 'endArrow=none;'}`;
     cells.push({ kind: 'edge', id, value: '', style: relationStyle, parent: '1', source: record.source.id, target: record.target.id,
-      ports: { source: { side: route.sourcePort.side, offset: route.sourcePort.offset }, target: { side: route.targetPort.side, offset: route.targetPort.offset } },
+      ports: { source: { side: record.sourcePort.side, offset: record.sourcePort.offset }, target: { side: record.targetPort.side, offset: record.targetPort.offset } },
       geometry: { relative: 1, points: route.points } });
-    if (route.label) {
-      const labelText = String(relation.name), b = route.label.bounds;
-      cells.push({ kind: 'vertex', id: route.label.id, value: htmlText(labelText), style: `shape=rect;rounded=0;html=1;whiteSpace=wrap;align=center;verticalAlign=middle;fontFamily=${style.fontFamily ?? 'Arial,Helvetica,sans-serif'};fontSize=${style.relation?.fontSize ?? fontSize};fillColor=#ffffff;strokeColor=none;spacing=2;`, parent: '1', geometry: { ...b } });
+    const label = routeLabels.get(id);
+    if (label) {
+      cells.push({ kind: 'vertex', id: label.id, value: htmlText(String(relation.name)), style: `shape=rect;rounded=0;html=1;whiteSpace=wrap;align=center;verticalAlign=middle;fontFamily=${style.fontFamily ?? 'Arial,Helvetica,sans-serif'};fontSize=${style.relation?.fontSize ?? fontSize};fillColor=#ffffff;strokeColor=none;spacing=2;`, parent: '1', geometry: { ...label.bounds } });
     }
   }
   const allBounds = cells.filter(cell => cell.kind === 'vertex' && cell.parent === '1').map(cell => cell.geometry);

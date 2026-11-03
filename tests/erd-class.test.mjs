@@ -27,6 +27,7 @@ function portPoint(edge, cell, end) {
   return { x: Number(geometry.x) + Number(geometry.width) * x, y: Number(geometry.y) + Number(geometry.height) * y };
 }
 function segmentHitsRect(a, b, box) {
+  box = Object.fromEntries(['x', 'y', 'width', 'height'].map(key => [key, Number(box[key])]));
   if (a.x === b.x) return a.x > box.x && a.x < box.x + box.width && Math.max(Math.min(a.y, b.y), box.y) < Math.min(Math.max(a.y, b.y), box.y + box.height);
   return a.y === b.y && a.y > box.y && a.y < box.y + box.height && Math.max(Math.min(a.x, b.x), box.x) < Math.min(Math.max(a.x, b.x), box.x + box.width);
 }
@@ -79,9 +80,8 @@ test('dense ERD routes keep distinct explicit tracks and clear entity rows and r
     for (let i = 1; i < route.length; i++) {
       const a = route[i - 1], b = route[i];
       for (const obstacle of vertices) {
-        if (obstacle.attrs.id === edge.attrs.source || obstacle.attrs.id === edge.attrs.target) continue;
         const box = Object.fromEntries(['x', 'y', 'width', 'height'].map(key => [key, Number(obstacle.geometry[key])]));
-        assert.equal(segmentHitsRect(a, b, box), false, `${edge.attrs.id} crosses unrelated row or label ${obstacle.attrs.id}`);
+        assert.equal(segmentHitsRect(a, b, box), false, `${edge.attrs.id} crosses row or label ${obstacle.attrs.id}`);
       }
       if (a.x === b.x && a.y !== b.y || a.y === b.y && a.x !== b.x) tracks.push({ edge: edge.attrs.id, a, b });
     }
@@ -99,10 +99,13 @@ test('dense ERD routes keep distinct explicit tracks and clear entity rows and r
     }
   }
   const entities = vertices.filter(cell => /^ent_/.test(cell.attrs.id) && !/_attr_\d+$/.test(cell.attrs.id));
-  for (const label of vertices.filter(cell => /^rel_label_/.test(cell.attrs.id))) for (const entity of entities) {
-    const a = label.geometry, b = entity.geometry;
-    const overlaps = Number(a.x) < Number(b.x) + Number(b.width) && Number(a.x) + Number(a.width) > Number(b.x) && Number(a.y) < Number(b.y) + Number(b.height) && Number(a.y) + Number(a.height) > Number(b.y);
-    assert.equal(overlaps, false, `${label.attrs.id} must not collide with ${entity.attrs.id}`);
+  for (const label of vertices.filter(cell => /^rel_label_/.test(cell.attrs.id))) {
+    for (const segment of tracks) assert.equal(segmentHitsRect(segment.a, segment.b, label.geometry), false, `${label.attrs.id} must not collide with ${segment.edge} ${JSON.stringify(segment)} / ${JSON.stringify(label.geometry)}`);
+    for (const entity of entities) {
+      const a = label.geometry, b = entity.geometry;
+      const overlaps = Number(a.x) < Number(b.x) + Number(b.width) && Number(a.x) + Number(a.width) > Number(b.x) && Number(a.y) < Number(b.y) + Number(b.height) && Number(a.y) + Number(a.height) > Number(b.y);
+      assert.equal(overlaps, false, `${label.attrs.id} must not collide with ${entity.attrs.id}`);
+    }
   }
 });
 
@@ -131,8 +134,7 @@ test('WorkoutsService example remains a class diagram with source-grounded metho
   assert.deepEqual(service.attributes.map(attribute => [attribute.name, attribute.type, attribute.visibility]), [['db', 'PrismaClient', 'private']]);
   assert.deepEqual(service.operations.map(operation => operation.name), ['constructor', 'createPlan', 'listPlans', 'getPlanById', 'deletePlan', 'startSession', 'getSessionById', 'logSet', 'completeSession', 'listSessions']);
   assert.deepEqual(service.operations.find(operation => operation.name === 'startSession').parameters.map(parameter => [parameter.name, parameter.type]), [['userId', 'string'], ['input', 'StartWorkoutSessionInput']]);
-  assert.match(service.operations.find(operation => operation.name === 'createPlan').returnType, /Prisma\.WorkoutPlanGetPayload/);
-  assert.match(service.operations.find(operation => operation.name === 'completeSession').returnType, /Prisma\.WorkoutSessionGetPayload.*null/);
+  assert.ok(service.operations.every(operation => operation.returnType == null), 'methods with inferred TypeScript return types should omit unsupported return signatures');
   assert.equal(input.relationships.some(relation => relation.type === 'generalization' || relation.type === 'realization'), false);
   const { cells } = render(path.relative(fixtureRoot, path.join(root, 'examples/class.json')));
   assert.ok(cells.some(cell => cell.vertex && text(cell.attrs.value).includes('WorkoutsService')));
