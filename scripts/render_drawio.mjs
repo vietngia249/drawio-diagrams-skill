@@ -44,7 +44,7 @@ export function renderInput(input, { style: styleOverrides = {}, renderers = reg
   return { type: data.type, cells, diagnostics, page: data.page ?? cells.page };
 }
 
-function runCli() {
+async function runCli() {
   try {
     const { positional, options, help } = parseCli(process.argv.slice(2), usage);
     if (help) { console.log(usage); process.exit(0); }
@@ -52,6 +52,10 @@ function runCli() {
     const input = positional[0]; if (!input || positional.length !== 1) throw new Error(usage);
     const output = options.output ?? input.replace(/\.json$/i, '.drawio'); assertSafeOutput(input, output); assertOutsideReferenceTree(output);
     const raw = parseJsonText(fs.readFileSync(input, 'utf8'), input), cliStyle = options.style ? parseJsonText(fs.readFileSync(options.style, 'utf8'), options.style) : {};
+    if (raw.type === 'class') {
+      const { renderClass } = await import('./class.mjs');
+      registerRenderer('class', renderClass);
+    }
     const rendered = renderInput(raw, { style: cliStyle });
     const xml = docXml(raw.title ?? path.basename(input), serializeCells(rendered.cells), rendered.page);
     const parsed = parseDrawioText(xml), modelCells = cellsFromModel(parsed.graph);

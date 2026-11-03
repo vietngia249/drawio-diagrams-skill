@@ -35,6 +35,6 @@
     { "from": "Member", "to": "Event", "name": "acts in event", "fromAttribute": "id", "toAttribute": "actorId", "fromCardinality": "0..1", "toCardinality": "0..*" },
     { "from": "Member", "to": "Event", "name": "is event subject", "fromAttribute": "id", "toAttribute": "subjectId", "fromCardinality": "0..1", "toCardinality": "0..*" },
     { "from": "Account", "to": "AuditRecordWithLongName", "name": "records account changes with a long explanatory label", "fromAttribute": "id", "toAttribute": "accountId", "fromCardinality": "1", "toCardinality": "0..*" },
-    { "from": "Account", "to": "Member", "name": "reverse parallel route", "fromAttribute": "id", "toAttribute": "accountId", "fromCardinality": "1..*", "toCardinality": "0..1" }
+    { "from": "Account", "to": "Member", "name": "", "fromAttribute": "id", "toAttribute": "accountId", "fromCardinality": "1..*", "toCardinality": "0..1" }
   ]
 }

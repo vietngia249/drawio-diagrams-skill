@@ -20,7 +20,16 @@ function render(inputName, outputName = `${path.basename(inputName, '.json')}.dr
 }
 
 const byId = cells => new Map(cells.map(cell => [cell.attrs.id, cell]));
-const text = value => String(value ?? '').replace(/<br\s*\/?\s*>/gi, '\n').replace(/<[^>]*>/g, '');
+const text = value => String(value ?? '').replace(/<br\s*\/?\s*>/gi, '\n').replace(/<[^>]*>/g, '').replaceAll('&lt;', '<').replaceAll('&gt;', '>').replaceAll('&amp;', '&');
+const styleNumber = (style, key) => Number(style.match(new RegExp(`(?:^|;)${key}=([^;]+)`))?.[1]);
+function portPoint(edge, cell, end) {
+  const geometry = cell.geometry, x = styleNumber(edge.attrs.style, `${end === 'source' ? 'exit' : 'entry'}X`), y = styleNumber(edge.attrs.style, `${end === 'source' ? 'exit' : 'entry'}Y`);
+  return { x: Number(geometry.x) + Number(geometry.width) * x, y: Number(geometry.y) + Number(geometry.height) * y };
+}
+function segmentHitsRect(a, b, box) {
+  if (a.x === b.x) return a.x > box.x && a.x < box.x + box.width && Math.max(Math.min(a.y, b.y), box.y) < Math.min(Math.max(a.y, b.y), box.y + box.height);
+  return a.y === b.y && a.y > box.y && a.y < box.y + box.height && Math.max(Math.min(a.x, b.x), box.x) < Math.min(Math.max(a.x, b.x), box.x + box.width);
+}
 
 test('ERD keeps PK/FK type and nullable notation in physical attribute rows with row endpoints', () => {
   const { cells } = render('erd-routing-stress.json');
@@ -64,10 +73,16 @@ test('dense ERD routes keep distinct explicit tracks and clear entity rows and r
   for (const edge of edges) {
     const points = edge.geometry.points.filter(point => !point.as || point.as === 'points').map(point => ({ x: Number(point.x), y: Number(point.y) }));
     assert.ok(points.length >= 2, `${edge.attrs.id} must serialize its explicit route instead of relying on automatic routing`);
-    const route = [edge.geometry.sourcePoint, ...points, edge.geometry.targetPoint].filter(Boolean).map(point => ({ x: Number(point.x), y: Number(point.y) }));
+    const source = vertexById.get(edge.attrs.source), target = vertexById.get(edge.attrs.target);
+    const route = [portPoint(edge, source, 'source'), ...points, portPoint(edge, target, 'target')];
     assert.ok(route.every((point, index) => index === 0 || point.x === route[index - 1].x || point.y === route[index - 1].y), `${edge.attrs.id} is orthogonal`);
     for (let i = 1; i < route.length; i++) {
       const a = route[i - 1], b = route[i];
+      for (const obstacle of vertices) {
+        if (obstacle.attrs.id === edge.attrs.source || obstacle.attrs.id === edge.attrs.target) continue;
+        const box = Object.fromEntries(['x', 'y', 'width', 'height'].map(key => [key, Number(obstacle.geometry[key])]));
+        assert.equal(segmentHitsRect(a, b, box), false, `${edge.attrs.id} crosses unrelated row or label ${obstacle.attrs.id}`);
+      }
       if (a.x === b.x && a.y !== b.y || a.y === b.y && a.x !== b.x) tracks.push({ edge: edge.attrs.id, a, b });
     }
     assert.ok(vertexById.has(edge.attrs.source) && vertexById.has(edge.attrs.target));
@@ -101,14 +116,12 @@ test('class rendering preserves typed UML compartments, visibility, parameters, 
   assert.equal(styles.length, 6);
   assert.ok(styles.some(style => /dashed=1/.test(style) && /endArrow=block/.test(style) && /endFill=0/.test(style)), 'realization has a dashed hollow generalization arrow');
   assert.ok(styles.some(style => /dashed=1/.test(style) && /endArrow=open/.test(style)), 'dependency has a dashed open arrow');
-  assert.ok(styles.some(style => /endArrow=diamondThin/.test(style) && /endFill=0/.test(style)), 'aggregation has a hollow diamond');
-  assert.ok(styles.some(style => /endArrow=diamondThin/.test(style) && /endFill=1/.test(style)), 'composition has a filled diamond');
+  assert.ok(styles.some(style => /startArrow=diamondThin/.test(style) && /startFill=0/.test(style)), 'aggregation marks its source whole with a hollow diamond');
+  assert.ok(styles.some(style => /startArrow=diamondThin/.test(style) && /startFill=1/.test(style)), 'composition marks its source whole with a filled diamond');
   assert.ok(styles.some(style => /endArrow=block/.test(style) && /endFill=0/.test(style)), 'generalization has a hollow triangle');
-  const association = cells.find(cell => cell.edge && cell.attrs.id === 'association');
-  assert.match(association.attrs.value, /creator/);
-  assert.match(association.attrs.value, /workouts/);
-  assert.match(association.attrs.value, /1/);
-  assert.match(association.attrs.value, /0\.\.\*/);
+  const associationLabels = cells.filter(cell => cell.vertex && /association_(?:source|target)_role/.test(cell.attrs.id)).map(cell => text(cell.attrs.value));
+  assert.ok(associationLabels.some(value => value.includes('creator') && value.includes('1')));
+  assert.ok(associationLabels.some(value => value.includes('workouts') && value.includes('0..*')));
 });
 
 test('WorkoutsService example remains a class diagram with source-grounded methods and no invented inheritance', () => {
@@ -117,10 +130,33 @@ test('WorkoutsService example remains a class diagram with source-grounded metho
   const service = input.classes.find(item => item.id === 'WorkoutsService');
   assert.deepEqual(service.attributes.map(attribute => [attribute.name, attribute.type, attribute.visibility]), [['db', 'PrismaClient', 'private']]);
   assert.deepEqual(service.operations.map(operation => operation.name), ['constructor', 'createPlan', 'listPlans', 'getPlanById', 'deletePlan', 'startSession', 'getSessionById', 'logSet', 'completeSession', 'listSessions']);
+  assert.deepEqual(service.operations.find(operation => operation.name === 'startSession').parameters.map(parameter => [parameter.name, parameter.type]), [['userId', 'string'], ['input', 'StartWorkoutSessionInput']]);
+  assert.match(service.operations.find(operation => operation.name === 'createPlan').returnType, /Prisma\.WorkoutPlanGetPayload/);
+  assert.match(service.operations.find(operation => operation.name === 'completeSession').returnType, /Prisma\.WorkoutSessionGetPayload.*null/);
   assert.equal(input.relationships.some(relation => relation.type === 'generalization' || relation.type === 'realization'), false);
   const { cells } = render(path.relative(fixtureRoot, path.join(root, 'examples/class.json')));
   assert.ok(cells.some(cell => cell.vertex && text(cell.attrs.value).includes('WorkoutsService')));
   assert.ok(cells.some(cell => cell.vertex && text(cell.attrs.value).includes('createPlan')));
+});
+
+test('FitTrackAI ERD example matches Prisma PostgreSQL physical types, nullable plan FK, and cardinality', () => {
+  const input = JSON.parse(fs.readFileSync(path.join(root, 'examples/erd.json'), 'utf8'));
+  const entities = Object.fromEntries(input.entities.map(entity => [entity.name, entity]));
+  const session = input.entities.find(entity => entity.name === 'WorkoutSession');
+  const fields = Object.fromEntries(session.attributes.map(attribute => [attribute.name, attribute]));
+  assert.deepEqual([fields.id.type, fields.planId.type, fields.startedAt.type, fields.totalVolumeKg.type, fields.durationSeconds.type], ['TEXT', 'TEXT NULL', 'TIMESTAMP(3)', 'DOUBLE PRECISION', 'INTEGER']);
+  assert.equal(fields.planId.key, 'FK');
+  const plan = input.relations.find(relation => relation.from === 'WorkoutPlan' && relation.to === 'WorkoutSession');
+  assert.equal(plan.fromCardinality, '0..1');
+  assert.equal(plan.toCardinality, '0..*');
+  assert.equal(plan.toAttribute, 'planId');
+  assert.ok(entities.WorkoutPlan.attributes.some(attribute => attribute.name === 'createdAt' && attribute.type === 'TIMESTAMP(3)'));
+  assert.ok(entities.Exercise.attributes.some(attribute => attribute.name === 'primaryMuscles' && attribute.type === 'TEXT[]'));
+  assert.ok(entities.WorkoutPlanExercise.attributes.some(attribute => attribute.name === 'restSeconds' && attribute.type === 'INTEGER'));
+  const owner = input.relations.find(relation => relation.from === 'User' && relation.to === 'Exercise');
+  assert.equal(owner.fromCardinality, '0..1');
+  assert.equal(owner.toCardinality, '0..*');
+  assert.equal(owner.toAttribute, 'userId');
 });
 
 test('ERD and UML class diagrams serialize different semantic node and relationship models', () => {

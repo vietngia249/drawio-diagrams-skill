@@ -1,308 +1,95 @@
-﻿{
-    "type":  "erd",
-    "title":  "Workout plan and session data",
-    "entities":  [
-                     {
-                         "name":  "WorkoutSession",
-                         "attributes":  [
-                                            {
-                                                "name":  "id",
-                                                "type":  "UUID",
-                                                "key":  "PK"
-                                            },
-                                            {
-                                                "name":  "userId",
-                                                "type":  "UUID",
-                                                "key":  "FK"
-                                            },
-                                            {
-                                                "name":  "planId",
-                                                "type":  "UUID?",
-                                                "key":  "FK"
-                                            },
-                                            {
-                                                "name":  "name",
-                                                "type":  "String"
-                                            },
-                                            {
-                                                "name":  "status",
-                                                "type":  "String"
-                                            },
-                                            {
-                                                "name":  "startedAt",
-                                                "type":  "DateTime"
-                                            },
-                                            {
-                                                "name":  "completedAt",
-                                                "type":  "DateTime?"
-                                            },
-                                            {
-                                                "name":  "durationSeconds",
-                                                "type":  "Int"
-                                            },
-                                            {
-                                                "name":  "totalVolumeKg",
-                                                "type":  "Float"
-                                            },
-                                            {
-                                                "name":  "notes",
-                                                "type":  "String?"
-                                            }
-                                        ]
-                     },
-                     {
-                         "name":  "User",
-                         "attributes":  [
-                                            {
-                                                "name":  "id",
-                                                "type":  "UUID",
-                                                "key":  "PK"
-                                            }
-                                        ]
-                     },
-                     {
-                         "name":  "WorkoutPlan",
-                         "attributes":  [
-                                            {
-                                                "name":  "id",
-                                                "type":  "UUID",
-                                                "key":  "PK"
-                                            },
-                                            {
-                                                "name":  "userId",
-                                                "type":  "UUID",
-                                                "key":  "FK"
-                                            },
-                                            {
-                                                "name":  "name",
-                                                "type":  "String"
-                                            },
-                                            {
-                                                "name":  "description",
-                                                "type":  "String?"
-                                            },
-                                            {
-                                                "name":  "targetMuscles",
-                                                "type":  "String[]"
-                                            }
-                                        ]
-                     },
-                     {
-                         "name":  "SessionExercise",
-                         "attributes":  [
-                                            {
-                                                "name":  "id",
-                                                "type":  "UUID",
-                                                "key":  "PK"
-                                            },
-                                            {
-                                                "name":  "sessionId",
-                                                "type":  "UUID",
-                                                "key":  "FK"
-                                            },
-                                            {
-                                                "name":  "exerciseId",
-                                                "type":  "String",
-                                                "key":  "FK"
-                                            },
-                                            {
-                                                "name":  "order",
-                                                "type":  "Int"
-                                            },
-                                            {
-                                                "name":  "notes",
-                                                "type":  "String?"
-                                            }
-                                        ]
-                     },
-                     {
-                         "name":  "Exercise",
-                         "attributes":  [
-                                            {
-                                                "name":  "id",
-                                                "type":  "String",
-                                                "key":  "PK"
-                                            },
-                                            {
-                                                "name":  "name",
-                                                "type":  "String"
-                                            },
-                                            {
-                                                "name":  "slug",
-                                                "type":  "String"
-                                            },
-                                            {
-                                                "name":  "userId",
-                                                "type":  "String?",
-                                                "key":  "FK"
-                                            }
-                                        ]
-                     },
-                     {
-                         "name":  "WorkoutPlanExercise",
-                         "attributes":  [
-                                            {
-                                                "name":  "id",
-                                                "type":  "UUID",
-                                                "key":  "PK"
-                                            },
-                                            {
-                                                "name":  "planId",
-                                                "type":  "UUID",
-                                                "key":  "FK"
-                                            },
-                                            {
-                                                "name":  "exerciseId",
-                                                "type":  "String",
-                                                "key":  "FK"
-                                            },
-                                            {
-                                                "name":  "order",
-                                                "type":  "Int"
-                                            },
-                                            {
-                                                "name":  "targetSets",
-                                                "type":  "Int"
-                                            },
-                                            {
-                                                "name":  "targetReps",
-                                                "type":  "Int"
-                                            },
-                                            {
-                                                "name":  "restSeconds",
-                                                "type":  "Int"
-                                            },
-                                            {
-                                                "name":  "notes",
-                                                "type":  "String?"
-                                            }
-                                        ]
-                     },
-                     {
-                         "name":  "ExerciseSet",
-                         "attributes":  [
-                                            {
-                                                "name":  "id",
-                                                "type":  "UUID",
-                                                "key":  "PK"
-                                            },
-                                            {
-                                                "name":  "sessionExerciseId",
-                                                "type":  "String",
-                                                "key":  "FK"
-                                            },
-                                            {
-                                                "name":  "setNumber",
-                                                "type":  "Int"
-                                            },
-                                            {
-                                                "name":  "setType",
-                                                "type":  "String"
-                                            },
-                                            {
-                                                "name":  "weightKg",
-                                                "type":  "Float"
-                                            },
-                                            {
-                                                "name":  "reps",
-                                                "type":  "Int"
-                                            },
-                                            {
-                                                "name":  "rpe",
-                                                "type":  "Float?"
-                                            },
-                                            {
-                                                "name":  "isCompleted",
-                                                "type":  "Boolean"
-                                            },
-                                            {
-                                                "name":  "completedAt",
-                                                "type":  "DateTime?"
-                                            }
-                                        ]
-                     }
-                 ],
-    "relations":  [
-                      {
-                          "from":  "User",
-                          "to":  "WorkoutPlan",
-                          "name":  "",
-                          "fromCardinality":  "1",
-                          "toCardinality":  "0..*",
-                          "fromAttribute":  "id",
-                          "toAttribute":  "userId"
-                      },
-                      {
-                          "from":  "WorkoutPlan",
-                          "to":  "WorkoutPlanExercise",
-                          "name":  "",
-                          "fromCardinality":  "1",
-                          "toCardinality":  "0..*",
-                          "fromAttribute":  "id",
-                          "toAttribute":  "planId"
-                      },
-                      {
-                          "from":  "Exercise",
-                          "to":  "WorkoutPlanExercise",
-                          "name":  "",
-                          "fromCardinality":  "1",
-                          "toCardinality":  "0..*",
-                          "fromAttribute":  "id",
-                          "toAttribute":  "exerciseId"
-                      },
-                      {
-                          "from":  "User",
-                          "to":  "WorkoutSession",
-                          "name":  "",
-                          "fromCardinality":  "1",
-                          "toCardinality":  "0..*",
-                          "fromAttribute":  "id",
-                          "toAttribute":  "userId"
-                      },
-                      {
-                          "from":  "WorkoutPlan",
-                          "to":  "WorkoutSession",
-                          "name":  "",
-                          "fromCardinality":  "0..1",
-                          "toCardinality":  "0..*",
-                          "fromAttribute":  "id",
-                          "toAttribute":  "planId"
-                      },
-                      {
-                          "from":  "WorkoutSession",
-                          "to":  "SessionExercise",
-                          "name":  "",
-                          "fromCardinality":  "1",
-                          "toCardinality":  "0..*",
-                          "fromAttribute":  "id",
-                          "toAttribute":  "sessionId"
-                      },
-                      {
-                          "from":  "Exercise",
-                          "to":  "SessionExercise",
-                          "name":  "",
-                          "fromCardinality":  "1",
-                          "toCardinality":  "0..*",
-                          "fromAttribute":  "id",
-                          "toAttribute":  "exerciseId"
-                      },
-                      {
-                          "from":  "SessionExercise",
-                          "to":  "ExerciseSet",
-                          "name":  "",
-                          "fromCardinality":  "1",
-                          "toCardinality":  "0..*",
-                          "fromAttribute":  "id",
-                          "toAttribute":  "sessionExerciseId"
-                      },
-                      {
-                          "from":  "User",
-                          "to":  "Exercise",
-                          "name":  "",
-                          "fromCardinality":  "0..1",
-                          "toCardinality":  "0..*",
-                          "fromAttribute":  "id",
-                          "toAttribute":  "userId"
-                      }
-                  ]
+{
+  "type": "erd",
+  "title": "FitTrackAI workout persistence (PostgreSQL physical types)",
+  "entities": [
+    { "name": "User", "attributes": [
+      { "name": "id", "type": "TEXT", "key": "PK" },
+      { "name": "email", "type": "TEXT" },
+      { "name": "passwordHash", "type": "TEXT" },
+      { "name": "displayName", "type": "TEXT" },
+      { "name": "avatarUrl", "type": "TEXT NULL" },
+      { "name": "createdAt", "type": "TIMESTAMP(3)" },
+      { "name": "updatedAt", "type": "TIMESTAMP(3)" }
+    ] },
+    { "name": "Exercise", "attributes": [
+      { "name": "id", "type": "TEXT", "key": "PK" },
+      { "name": "name", "type": "TEXT" },
+      { "name": "slug", "type": "TEXT" },
+      { "name": "category", "type": "TEXT" },
+      { "name": "force", "type": "TEXT NULL" },
+      { "name": "level", "type": "TEXT" },
+      { "name": "mechanic", "type": "TEXT NULL" },
+      { "name": "equipment", "type": "TEXT NULL" },
+      { "name": "primaryMuscles", "type": "TEXT[]" },
+      { "name": "secondaryMuscles", "type": "TEXT[]" },
+      { "name": "instructions", "type": "TEXT[]" },
+      { "name": "imageUrls", "type": "TEXT[]" },
+      { "name": "isCustom", "type": "BOOLEAN" },
+      { "name": "userId", "type": "TEXT NULL", "key": "FK" },
+      { "name": "createdAt", "type": "TIMESTAMP(3)" },
+      { "name": "updatedAt", "type": "TIMESTAMP(3)" }
+    ] },
+    { "name": "WorkoutPlan", "attributes": [
+      { "name": "id", "type": "TEXT", "key": "PK" },
+      { "name": "userId", "type": "TEXT", "key": "FK" },
+      { "name": "name", "type": "TEXT" },
+      { "name": "description", "type": "TEXT NULL" },
+      { "name": "targetMuscles", "type": "TEXT[]" },
+      { "name": "createdAt", "type": "TIMESTAMP(3)" },
+      { "name": "updatedAt", "type": "TIMESTAMP(3)" }
+    ] },
+    { "name": "WorkoutPlanExercise", "attributes": [
+      { "name": "id", "type": "TEXT", "key": "PK" },
+      { "name": "planId", "type": "TEXT", "key": "FK" },
+      { "name": "exerciseId", "type": "TEXT", "key": "FK" },
+      { "name": "order", "type": "INTEGER" },
+      { "name": "targetSets", "type": "INTEGER" },
+      { "name": "targetReps", "type": "INTEGER" },
+      { "name": "restSeconds", "type": "INTEGER" },
+      { "name": "notes", "type": "TEXT NULL" }
+    ] },
+    { "name": "WorkoutSession", "attributes": [
+      { "name": "id", "type": "TEXT", "key": "PK" },
+      { "name": "userId", "type": "TEXT", "key": "FK" },
+      { "name": "planId", "type": "TEXT NULL", "key": "FK" },
+      { "name": "name", "type": "TEXT" },
+      { "name": "status", "type": "TEXT" },
+      { "name": "startedAt", "type": "TIMESTAMP(3)" },
+      { "name": "completedAt", "type": "TIMESTAMP(3) NULL" },
+      { "name": "totalVolumeKg", "type": "DOUBLE PRECISION" },
+      { "name": "durationSeconds", "type": "INTEGER" },
+      { "name": "notes", "type": "TEXT NULL" },
+      { "name": "createdAt", "type": "TIMESTAMP(3)" },
+      { "name": "updatedAt", "type": "TIMESTAMP(3)" }
+    ] },
+    { "name": "SessionExercise", "attributes": [
+      { "name": "id", "type": "TEXT", "key": "PK" },
+      { "name": "sessionId", "type": "TEXT", "key": "FK" },
+      { "name": "exerciseId", "type": "TEXT", "key": "FK" },
+      { "name": "order", "type": "INTEGER" },
+      { "name": "notes", "type": "TEXT NULL" }
+    ] },
+    { "name": "ExerciseSet", "attributes": [
+      { "name": "id", "type": "TEXT", "key": "PK" },
+      { "name": "sessionExerciseId", "type": "TEXT", "key": "FK" },
+      { "name": "setNumber", "type": "INTEGER" },
+      { "name": "setType", "type": "TEXT" },
+      { "name": "weightKg", "type": "DOUBLE PRECISION" },
+      { "name": "reps", "type": "INTEGER" },
+      { "name": "rpe", "type": "DOUBLE PRECISION NULL" },
+      { "name": "isCompleted", "type": "BOOLEAN" },
+      { "name": "completedAt", "type": "TIMESTAMP(3) NULL" }
+    ] }
+  ],
+  "relations": [
+    { "from": "User", "to": "WorkoutPlan", "fromAttribute": "id", "toAttribute": "userId", "fromCardinality": "1", "toCardinality": "0..*" },
+    { "from": "User", "to": "Exercise", "fromAttribute": "id", "toAttribute": "userId", "fromCardinality": "0..1", "toCardinality": "0..*" },
+    { "from": "WorkoutPlan", "to": "WorkoutPlanExercise", "fromAttribute": "id", "toAttribute": "planId", "fromCardinality": "1", "toCardinality": "0..*" },
+    { "from": "Exercise", "to": "WorkoutPlanExercise", "fromAttribute": "id", "toAttribute": "exerciseId", "fromCardinality": "1", "toCardinality": "0..*" },
+    { "from": "User", "to": "WorkoutSession", "fromAttribute": "id", "toAttribute": "userId", "fromCardinality": "1", "toCardinality": "0..*" },
+    { "from": "WorkoutPlan", "to": "WorkoutSession", "fromAttribute": "id", "toAttribute": "planId", "fromCardinality": "0..1", "toCardinality": "0..*" },
+    { "from": "WorkoutSession", "to": "SessionExercise", "fromAttribute": "id", "toAttribute": "sessionId", "fromCardinality": "1", "toCardinality": "0..*" },
+    { "from": "Exercise", "to": "SessionExercise", "fromAttribute": "id", "toAttribute": "exerciseId", "fromCardinality": "1", "toCardinality": "0..*" },
+    { "from": "SessionExercise", "to": "ExerciseSet", "fromAttribute": "id", "toAttribute": "sessionExerciseId", "fromCardinality": "1", "toCardinality": "0..*" }
+  ]
 }
