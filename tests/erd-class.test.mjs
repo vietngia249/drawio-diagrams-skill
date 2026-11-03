@@ -90,12 +90,11 @@ test('dense ERD routes keep distinct explicit tracks and clear entity rows and r
   for (let i = 0; i < tracks.length; i++) for (let j = i + 1; j < tracks.length; j++) {
     if (tracks[i].edge === tracks[j].edge) continue;
     const a = tracks[i], b = tracks[j];
-    const horizontal = a.a.y === a.b.y && b.a.y === b.b.y && a.a.y === b.a.y;
-    const vertical = a.a.x === a.b.x && b.a.x === b.b.x && a.a.x === b.a.x;
+    const horizontal = a.a.y === a.b.y && b.a.y === b.b.y, vertical = a.a.x === a.b.x && b.a.x === b.b.x;
     if (horizontal || vertical) {
       const aMin = horizontal ? Math.min(a.a.x, a.b.x) : Math.min(a.a.y, a.b.y), aMax = horizontal ? Math.max(a.a.x, a.b.x) : Math.max(a.a.y, a.b.y);
       const bMin = horizontal ? Math.min(b.a.x, b.b.x) : Math.min(b.a.y, b.b.y), bMax = horizontal ? Math.max(b.a.x, b.b.x) : Math.max(b.a.y, b.b.y);
-      assert.ok(Math.min(aMax, bMax) <= Math.max(aMin, bMin), `${a.edge} and ${b.edge} share a positive-length route segment`);
+      if (horizontal ? a.a.y === b.a.y : a.a.x === b.a.x) assert.ok(Math.min(aMax, bMax) <= Math.max(aMin, bMin), `${a.edge} and ${b.edge} share a positive-length route segment`);
     }
   }
   const entities = vertices.filter(cell => /^ent_/.test(cell.attrs.id) && !/_attr_\d+$/.test(cell.attrs.id));
