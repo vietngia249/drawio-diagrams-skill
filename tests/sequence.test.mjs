@@ -89,7 +89,9 @@ test('FitTrackAI example documents only the source-backed successful completion 
   const example = JSON.parse(fs.readFileSync(path.join(root, 'examples/sequence.json'), 'utf8'));
   assert.deepEqual(example.participants.map(participant => participant.id), ['athlete', 'ui', 'api', 'svc', 'db']);
   assert.equal(example.participants[0].shape, 'umlActor');
-  assert.deepEqual(example.messages[0], { kind: 'sync', order: 0, label: 'Tap Save & Complete', from: 'athlete', to: 'ui' });
+  assert.deepEqual(example.messages[0], { kind: 'sync', order: 0, label: 'Nhấn nút “Save & Complete”', from: 'athlete', to: 'ui' });
+  assert.equal(example.participants[0].label, 'Vận động viên (đã xác thực)');
+  assert.doesNotMatch(example.participants[0].label, /Athlete/u);
   assert.equal(example.fragments.length, 0, 'the referenced sequence is a single successful path, not a conditional fragment');
   assert.ok(example.messages.every(message => ['sync', 'return'].includes(message.kind)));
   assert.ok(example.messages.some(message => message.label.startsWith('200 JSON')));
@@ -127,7 +129,7 @@ test('the athlete finish trigger connects the native actor to the active-session
   const data = fitTrack(), cells = renderModel(data), trigger = cells.find(cell => cell.attrs.id === 'message_0');
   assert.equal(trigger.attrs.source, 'participant_0');
   assert.equal(trigger.attrs.target, 'participant_1');
-  assert.ok(cells.find(cell => cell.attrs.id === 'message_label_0').attrs.value.includes('Tap Save &amp; Complete'));
+  assert.ok(cells.find(cell => cell.attrs.id === 'message_label_0').attrs.value.includes('Nhấn nút “Save &amp; Complete”'));
   const uiActivation = cells.find(cell => cell.attrs.id === 'activation_0');
   assert.ok(uiActivation, 'UI execution begins when it receives the finish-button event');
 });
