@@ -5,7 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { assertOutsideReferenceTree, assertSafeOutput, edge, loadStyle, normalizeInput, parseJsonText, renderGeneric, textWidth, validateGeneric } from '../scripts/common.mjs';
+import { assertOutsideReferenceTree, assertSafeOutput, DEFAULT_PRESENTATION_TOKENS, docXml, edge, fitShapeToBounds, loadStyle, normalizeInput, parseJsonText, renderGeneric, selfMessageGeometry, spacingFor, styleForRole, textWidth, validateGeneric } from '../scripts/common.mjs';
 import { parseDrawioText, cellsFromModel } from '../scripts/drawio_xml.mjs';
 import { inspect } from '../scripts/validate_drawio.mjs';
 import { renderSequence } from '../scripts/sequence.mjs';
@@ -39,6 +39,57 @@ test('generic validation rejects unresolved parent/endpoints and invalid geometr
   const data = normalizeInput({ elements: [{ vertex: true, id: 'v', parent: 'missing', geometry: { x: 0, y: 0, width: -1, height: 1 } }, { edge: true, id: 'e', source: 'absent', target: 'v', geometry: {} }] });
   assert.throws(() => renderGeneric(data), e => ['PARENT_UNRESOLVED', 'GEOMETRY_SIZE', 'ENDPOINT_UNRESOLVED'].every(code => e.diagnostics.some(d => d.code === code)));
 });
+test('generic floating edges serialize explicit source and target points but reject broken references', () => {
+  const input = normalizeInput({ elements: [
+    { vertex: true, id: 'node', geometry: { x: 40, y: 40, width: 80, height: 40 } },
+    { edge: true, id: 'floating', target: 'node', geometry: { sourcePoint: { x: 10, y: 60 } } },
+    { edge: true, id: 'also-floating', geometry: { sourcePoint: { x: 10, y: 80 }, targetPoint: { x: 180, y: 80 } } }
+  ] });
+  const xml = renderGeneric(input).join('');
+  assert.match(xml, /id="floating"[^>]*source="" target="node"/);
+  assert.match(xml, /<mxPoint x="10" y="60" as="sourcePoint"\/>/);
+  assert.match(xml, /id="also-floating"[^>]*source="" target=""/);
+  assert.match(xml, /<mxPoint x="180" y="80" as="targetPoint"\/>/);
+  const invalid = normalizeInput({ elements: [
+    { vertex: true, id: 'node', geometry: { x: 40, y: 40, width: 80, height: 40 } },
+    { edge: true, id: 'broken', source: 'missing', target: 'node', geometry: { sourcePoint: { x: 10, y: 60 } } }
+  ] });
+  assert.throws(() => renderGeneric(invalid), error => error.diagnostics.some(d => d.code === 'ENDPOINT_UNRESOLVED'));
+  const missing = normalizeInput({ elements: [{ edge: true, id: 'missing-endpoint', geometry: {} }] });
+  assert.throws(() => renderGeneric(missing), error => error.diagnostics.filter(d => d.code === 'ENDPOINT_REQUIRED').length === 2);
+});
+test('CLI render and XML validation accept floating edges only with explicit terminal points', () => {
+  const input = path.join(temp, 'floating-edge.json'), output = path.join(temp, 'floating-edge.drawio');
+  fs.writeFileSync(input, JSON.stringify({ elements: [{ edge: true, id: 'floating', geometry: {
+    sourcePoint: { x: 30, y: 40 }, targetPoint: { x: 180, y: 40 }
+  } }] }));
+  const validRun = spawnSync(process.execPath, ['scripts/render_drawio.mjs', input, '-o', output], { cwd: root, encoding: 'utf8' });
+  assert.equal(validRun.status, 0, validRun.stderr);
+  const valid = inspect(output);
+  assert.equal(valid.ok, true, JSON.stringify(valid.errors));
+  const points = cellsFromModel(parseDrawioText(fs.readFileSync(output, 'utf8')).graph).find(cell => cell.attrs.id === 'floating').geometry.points;
+  assert.ok(points.some(point => point.as === 'sourcePoint'));
+  assert.ok(points.some(point => point.as === 'targetPoint'));
+
+  for (const [name, geometry, supplied] of [
+    ['missing-point', { sourcePoint: { x: 30, y: 40 } }, {}],
+    ['unresolved-terminal', { targetPoint: { x: 180, y: 40 } }, { source: 'missing-cell' }]
+  ]) {
+    const invalidInput = path.join(temp, `${name}.json`), invalidOutput = path.join(temp, `${name}.drawio`);
+    fs.writeFileSync(invalidInput, JSON.stringify({ elements: [{ edge: true, id: name, ...supplied, geometry }] }));
+    const invalidRun = spawnSync(process.execPath, ['scripts/render_drawio.mjs', invalidInput, '-o', invalidOutput], { cwd: root, encoding: 'utf8' });
+    assert.equal(invalidRun.status, 2, invalidRun.stdout);
+    assert.equal(fs.existsSync(invalidOutput), false);
+    assert.match(invalidRun.stderr, name === 'missing-point' ? /ENDPOINT_REQUIRED/ : /ENDPOINT_UNRESOLVED/);
+  }
+
+  const missingPointXml = path.join(temp, 'xml-missing-floating-point.drawio');
+  fs.writeFileSync(missingPointXml, docXml('Missing floating point', [edge('missing-point', '', '', '', 'edgeStyle=none;') ]));
+  assert.ok(inspect(missingPointXml).errors.some(error => error.code === 'ENDPOINT_UNRESOLVED'));
+  const unresolvedXml = path.join(temp, 'xml-unresolved-floating-endpoint.drawio');
+  fs.writeFileSync(unresolvedXml, docXml('Unresolved floating endpoint', [edge('unresolved', 'missing-cell', '', '', 'edgeStyle=none;', '1', { points: [{ x: 180, y: 40, as: 'targetPoint' }] })]));
+  assert.ok(inspect(unresolvedXml).errors.some(error => error.code === 'ENDPOINT_UNRESOLVED' && error.path.endsWith('.source')));
+});
 test('generic validation rejects cyclic parent relationships', () => {
   const data = normalizeInput({ elements: [
     { vertex: true, id: 'a', parent: 'b', geometry: { x: 0, y: 0, width: 10, height: 10 } },
@@ -60,7 +111,30 @@ test('style overrides preserve defaults and reject unknown keys', () => {
   assert.equal(style.sequence.message.syncArrow, 'block');
   assert.equal(style.erd.relation.fontSize, 14);
   assert.equal(style.activity.action.strokeWidth, 1);
+  assert.deepEqual(style.presentation, DEFAULT_PRESENTATION_TOKENS);
+  const presentation = loadStyle({ presentation: { fontSizes: { body: 18 } } }).presentation;
+  assert.equal(styleForRole('node', presentation).match(/fontSize=(\d+)/)?.[1], '18');
   assert.throws(() => loadStyle({ sequence: { madeUp: {} } }), e => e.diagnostics[0].code === 'STYLE_UNKNOWN');
+});
+test('shared presentation tokens change generated styles without changing notation', () => {
+  const style = styleForRole('node', {
+    fontSizes: { body: 20 }, colors: { stroke: '#123456', fill: '#eeeeee' }, strokeWidth: 2
+  }, 'shape=umlActor;endArrow=block;dashed=1;');
+  assert.match(style, /fontSize=20;/);
+  assert.match(style, /fontFamily=Arial,Helvetica,sans-serif;/);
+  assert.match(style, /strokeColor=#123456;/);
+  assert.match(style, /fillColor=#eeeeee;/);
+  assert.match(style, /strokeWidth=2;/);
+  for (const semantic of ['shape=umlActor', 'endArrow=block', 'dashed=1']) assert.ok(style.includes(semantic), `presentation must preserve ${semantic}`);
+  const label = styleForRole('label', { label: { paddingX: 10, paddingY: 4, background: '#f0f0f0' }, colors: { stroke: '#222222' } }, 'text;strokeColor=none;');
+  assert.match(label, /fontColor=#222222;/);
+  assert.match(label, /strokeColor=none;/);
+  assert.match(label, /fillColor=#f0f0f0;/);
+  assert.match(label, /spacingLeft=10;.*spacingTop=4;/);
+  assert.equal(styleForRole('edge').includes('fillColor='), false);
+  assert.equal(spacingFor('laneSpacing'), 24);
+  assert.deepEqual(selfMessageGeometry({ x: 10, y: 20, track: 1 }).points, [{ x: 10, y: 20 }, { x: 70, y: 20 }, { x: 70, y: 44 }, { x: 10, y: 44 }]);
+  assert.deepEqual(fitShapeToBounds({ x: 0, y: 0, width: 100, height: 100 }, 2), { x: 0, y: 25, width: 100, height: 50 });
 });
 test('sequence synchronous messages retain UML block arrow under style override', () => {
   const cells = renderSequence({ participants: ['Client', 'Service'], messages: [{ from: 'Client', to: 'Service', kind: 'sync', label: 'call' }] }, {
@@ -89,6 +163,13 @@ test('draw.io parser accepts an uncompressed embedded XML page', () => {
   const model = '<mxGraphModel><root><mxCell id="0"/><mxCell id="1" parent="0"/></root></mxGraphModel>';
   const parsed = parseDrawioText(`<mxfile><diagram id="plain" name="Plain"><![CDATA[${model}]]></diagram></mxfile>`);
   assert.equal(parsed.page.id, 'plain'); assert.equal(cellsFromModel(parsed.graph).length, 2);
+});
+test('draw.io page IDs are document-unique while cell IDs remain page-local', () => {
+  const model = '<mxGraphModel><root><mxCell id="0"/><mxCell id="1" parent="0"/><mxCell id="local" vertex="1" parent="1"><mxGeometry x="0" y="0" width="10" height="10" as="geometry"/></mxCell></root></mxGraphModel>';
+  const twoPages = `<mxfile><diagram id="overview">${model}</diagram><diagram id="details">${model}</diagram></mxfile>`;
+  assert.equal(parseDrawioText(twoPages, 'details').page.id, 'details');
+  const duplicate = `<mxfile><diagram id="same">${model}</diagram><diagram id="same">${model}</diagram></mxfile>`;
+  assert.throws(() => parseDrawioText(duplicate), error => error.diagnostics[0].code === 'PAGE_ID_DUPLICATE');
 });
 test('compressed multipage files require and honor explicit page selection', () => {
   const file = path.join(fixtureRoot, 'compressed-multipage.drawio');

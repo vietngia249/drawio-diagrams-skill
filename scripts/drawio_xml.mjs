@@ -60,6 +60,11 @@ export function parseDrawioText(source, selection) {
       const model = first ?? (embedded.startsWith('<mxGraphModel') ? parseXml(embedded) : parseXml(decodeDiagramPayload(node)));
       return { id: node.attrs.id ?? `page${index + 1}`, name: node.attrs.name ?? `Page-${index + 1}`, model };
     });
+    const pageIds = new Set();
+    for (const page of pages) {
+      if (pageIds.has(page.id)) fail('PAGE_ID_DUPLICATE', `Diagram page IDs must be unique: ${page.id}`, page.id);
+      pageIds.add(page.id);
+    }
   } else fail('DRAWIO_ROOT', 'Expected an mxfile or mxGraphModel root');
   if (!pages.length) fail('DRAWIO_PAGES', 'No diagram pages were found');
   let page;

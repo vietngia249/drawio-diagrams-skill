@@ -10,6 +10,7 @@ import { renderActivity } from './activity.mjs';
 import { cellsFromModel, parseDrawioText } from './drawio_xml.mjs';
 
 const usage = 'Usage: node scripts/render_drawio.mjs input.json [-o output.drawio] [--style overrides.json]';
+const hasExplicitFloatingPoint = (cell, end) => (cell.geometry.points ?? []).some(point => point.as === `${end}Point` && Number.isFinite(Number(point.x)) && Number.isFinite(Number(point.y)));
 const builtins = new Map([
   ['sequence', (data, style) => renderSequence(data, style)],
   ['erd', (data, style) => renderErd(data, style)],
@@ -75,7 +76,7 @@ async function runCli() {
       }
       if (cell.edge) for (const [index, point] of g.points.entries()) if ((!point.as || ['points', 'sourcePoint', 'targetPoint'].includes(point.as)) && (!Number.isFinite(Number(point.x)) || !Number.isFinite(Number(point.y)))) errors.push({ phase: 'xml', severity: 'error', code: 'POINT_GEOMETRY', path: `$output.cells.${id}.geometry.points[${index}]`, message: 'Rendered route point must be finite' });
       if (id && id !== '0' && id !== '1' && cell.attrs.parent && !idSet.has(cell.attrs.parent)) errors.push({ phase: 'xml', severity: 'error', code: 'PARENT_UNRESOLVED', path: `$output.cells.${id}.parent`, message: `Unresolved parent ${cell.attrs.parent}` });
-      for (const key of ['source', 'target']) if (cell.edge && !idSet.has(cell.attrs[key])) errors.push({ phase: 'xml', severity: 'error', code: 'ENDPOINT_UNRESOLVED', path: `$output.cells.${id}.${key}`, message: `Unresolved ${key} ${cell.attrs[key] ?? ''}` });
+      for (const key of ['source', 'target']) if (cell.edge && !idSet.has(cell.attrs[key]) && !(cell.attrs[key] === '' && hasExplicitFloatingPoint(cell, key))) errors.push({ phase: 'xml', severity: 'error', code: 'ENDPOINT_UNRESOLVED', path: `$output.cells.${id}.${key}`, message: `Unresolved ${key} ${cell.attrs[key] ?? ''}` });
     }
     if (errors.length) { const e = new Error('Rendered XML failed structural checks'); e.diagnostics = errors; throw e; }
     writeOut(output, xml);

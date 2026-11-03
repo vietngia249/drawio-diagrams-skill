@@ -19,6 +19,10 @@ Only record an override here when the user explicitly requests a connector or na
 
 Style sources are resolved as renderer fallback, `scripts/style.json`, input `style`, then `--style overrides.json`; a generic cell's inline style is supplied directly. `--style` only accepts known configuration keys. Do not treat a renderer default as a user preference. When a requested native style key is not evidenced by an installed shape definition or checked-in exported example, ask for a reference or use a documented supported alternative rather than guessing.
 
+## Shared presentation tokens
+
+Renderers can read `style.presentation` and use `styleForRole`, `spacingFor`, `selfMessageGeometry`, and `fitShapeToBounds` from `scripts/common.mjs`. The token names and defaults are documented in [the geometry contract](docs/geometry-contract.md). Defaults use monochrome colors; a palette is an optional presentation override. These builders affect visual styles and layout measurements only. Preserve semantic shape types, arrows, dashes, relationship kinds, multiplicities, and direction from the input/notation rules.
+
 ## Visual templates
 
 The repository's layout and formatting defaults are templates, not notation rules or user-specific facts. Examples include sequence participant headers, dashed lifelines and fragment frames; ERD row-based entities, key markers and routed relations; the DFD's distinct node appearances and flow labels; and the use-case boundary/grid arrangement. Activity and class dimensions respond to estimated label/member content. Font measurement is an estimate; diagrams.net Desktop determines actual rendered appearance. Review an export for clipping and legibility.

@@ -139,5 +139,15 @@
                                  "strokeColor":  "#000000",
                                  "strokeWidth":  1
                              }
-                 }
+                 },
+    "presentation": {
+        "fontFamily": "Arial,Helvetica,sans-serif",
+        "fontSizes": { "title": 18, "heading": 16, "body": 14, "label": 14, "small": 12 },
+        "colors": { "stroke": "#000000", "fill": "#ffffff", "mutedStroke": "#666666" },
+        "strokeWidth": 1,
+        "label": { "paddingX": 6, "paddingY": 3, "background": "#ffffff" },
+        "spacing": { "nodeGap": 32, "containerPadding": 24, "routeClearance": 12, "laneSpacing": 24 },
+        "selfMessage": { "width": 32, "height": 24, "offset": 16, "trackGap": 12 },
+        "proportions": { "actor": 0.8888888888888888, "useCase": 1.8, "process": 1.6, "dataStore": 1.5 }
+    }
 }
