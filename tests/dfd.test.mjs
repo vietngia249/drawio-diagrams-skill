@@ -28,7 +28,8 @@ test('example declares a logical Level 1 DFD and names the perspective',()=>{
 });
 
 test('clean Vietnamese acceptance labels survive DFD XML serialization',()=>{
-  const xml=render(acceptance);
+  const rendered=renderDfd(acceptance,style),xml=serializeCells(rendered.cells).join('\n');
+  assert.deepEqual(rendered.diagnostics,[],'clean UTF-8 acceptance example fits its explicit page');
   assert.equal(acceptance.title,'Synthetic UTF-8 DFD: Tra cứu & phản hồi <demo>');
   assert.ok(acceptance.nodes.some(node=>node.label==='D1 Hồ sơ khách hàng <đã lưu>'));
   assert.ok(acceptance.flows.some(flow=>flow.label==='Kết quả <hợp lệ> & ghi chú'));
@@ -144,4 +145,12 @@ test('DFD uses only native Desktop evidenced shape names',()=>{
   // The original FitTrackAI Desktop-exported DFD uses shape=default for its
   // external entity; rect and ellipse are also present in Desktop examples.
   assert.ok(shapes.every(s=>['default','rect','ellipse'].includes(s)),`unexpected native shape name: ${shapes.join(', ')}`);
+});
+
+test('default DFD node and flow text uses a readable 12 point minimum',()=>{
+  const xml=render(model);
+  assert.match(xml,/fontSize=12(?:;|&quot;)/,'renderer should lift the 9.5 point repository default to 12');
+  const fontSizes=[...xml.matchAll(/fontSize=([\d.]+)/g)].map(match=>Number(match[1]));
+  assert.ok(fontSizes.length>0);
+  assert.ok(fontSizes.every(size=>size>=12),`found undersized DFD text: ${fontSizes.join(', ')}`);
 });

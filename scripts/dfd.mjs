@@ -48,7 +48,7 @@ export function renderDfd(data,styleConfig){
   if(!Array.isArray(input)||!Array.isArray(flows))throw Error('DFD nodes and flows must be arrays');
   if(data.level!==undefined&&(!Number.isInteger(data.level)||data.level<0))throw Error('DFD level must be a nonnegative integer');
   if(data.perspective!==undefined&&!['logical','physical'].includes(data.perspective))throw Error('DFD perspective must be logical or physical');
-  const ids=new Set(),fontSize=Number(styleConfig?.dfd?.fontSize)||10,fontFamily=styleConfig?.dfd?.fontFamily||'Arial';
+  const ids=new Set(),fontSize=Math.max(12,Number(styleConfig?.dfd?.fontSize)||12),fontFamily=styleConfig?.dfd?.fontFamily||'Arial';
   const nodes=input.map((node,index)=>{
     if(!node||typeof node!=='object')throw Error(`DFD node ${index} must be an object`);
     const id=clean(node.id),kind=node.kind||'process',label=clean(labelOf(node));
