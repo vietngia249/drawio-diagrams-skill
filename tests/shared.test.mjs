@@ -5,7 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { assertOutsideReferenceTree, assertSafeOutput, DEFAULT_PRESENTATION_TOKENS, edge, fitShapeToBounds, loadStyle, normalizeInput, parseJsonText, renderGeneric, selfMessageGeometry, spacingFor, styleForRole, textWidth, validateGeneric } from '../scripts/common.mjs';
+import { assertOutsideReferenceTree, assertSafeOutput, DEFAULT_PRESENTATION_TOKENS, docXml, edge, fitShapeToBounds, loadStyle, normalizeInput, parseJsonText, renderGeneric, selfMessageGeometry, spacingFor, styleForRole, textWidth, validateGeneric } from '../scripts/common.mjs';
 import { parseDrawioText, cellsFromModel } from '../scripts/drawio_xml.mjs';
 import { inspect } from '../scripts/validate_drawio.mjs';
 import { renderSequence } from '../scripts/sequence.mjs';
@@ -57,6 +57,38 @@ test('generic floating edges serialize explicit source and target points but rej
   assert.throws(() => renderGeneric(invalid), error => error.diagnostics.some(d => d.code === 'ENDPOINT_UNRESOLVED'));
   const missing = normalizeInput({ elements: [{ edge: true, id: 'missing-endpoint', geometry: {} }] });
   assert.throws(() => renderGeneric(missing), error => error.diagnostics.filter(d => d.code === 'ENDPOINT_REQUIRED').length === 2);
+});
+test('CLI render and XML validation accept floating edges only with explicit terminal points', () => {
+  const input = path.join(temp, 'floating-edge.json'), output = path.join(temp, 'floating-edge.drawio');
+  fs.writeFileSync(input, JSON.stringify({ elements: [{ edge: true, id: 'floating', geometry: {
+    sourcePoint: { x: 30, y: 40 }, targetPoint: { x: 180, y: 40 }
+  } }] }));
+  const validRun = spawnSync(process.execPath, ['scripts/render_drawio.mjs', input, '-o', output], { cwd: root, encoding: 'utf8' });
+  assert.equal(validRun.status, 0, validRun.stderr);
+  const valid = inspect(output);
+  assert.equal(valid.ok, true, JSON.stringify(valid.errors));
+  const points = cellsFromModel(parseDrawioText(fs.readFileSync(output, 'utf8')).graph).find(cell => cell.attrs.id === 'floating').geometry.points;
+  assert.ok(points.some(point => point.as === 'sourcePoint'));
+  assert.ok(points.some(point => point.as === 'targetPoint'));
+
+  for (const [name, geometry, supplied] of [
+    ['missing-point', { sourcePoint: { x: 30, y: 40 } }, {}],
+    ['unresolved-terminal', { targetPoint: { x: 180, y: 40 } }, { source: 'missing-cell' }]
+  ]) {
+    const invalidInput = path.join(temp, `${name}.json`), invalidOutput = path.join(temp, `${name}.drawio`);
+    fs.writeFileSync(invalidInput, JSON.stringify({ elements: [{ edge: true, id: name, ...supplied, geometry }] }));
+    const invalidRun = spawnSync(process.execPath, ['scripts/render_drawio.mjs', invalidInput, '-o', invalidOutput], { cwd: root, encoding: 'utf8' });
+    assert.equal(invalidRun.status, 2, invalidRun.stdout);
+    assert.equal(fs.existsSync(invalidOutput), false);
+    assert.match(invalidRun.stderr, name === 'missing-point' ? /ENDPOINT_REQUIRED/ : /ENDPOINT_UNRESOLVED/);
+  }
+
+  const missingPointXml = path.join(temp, 'xml-missing-floating-point.drawio');
+  fs.writeFileSync(missingPointXml, docXml('Missing floating point', [edge('missing-point', '', '', '', 'edgeStyle=none;') ]));
+  assert.ok(inspect(missingPointXml).errors.some(error => error.code === 'ENDPOINT_UNRESOLVED'));
+  const unresolvedXml = path.join(temp, 'xml-unresolved-floating-endpoint.drawio');
+  fs.writeFileSync(unresolvedXml, docXml('Unresolved floating endpoint', [edge('unresolved', 'missing-cell', '', '', 'edgeStyle=none;', '1', { points: [{ x: 180, y: 40, as: 'targetPoint' }] })]));
+  assert.ok(inspect(unresolvedXml).errors.some(error => error.code === 'ENDPOINT_UNRESOLVED' && error.path.endsWith('.source')));
 });
 test('generic validation rejects cyclic parent relationships', () => {
   const data = normalizeInput({ elements: [

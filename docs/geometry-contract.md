@@ -29,7 +29,7 @@ const actorBounds = fitShapeToBounds(availableBounds, style.presentation.proport
 
 Spacing tokens are `nodeGap`, `containerPadding`, `routeClearance`, and `laneSpacing`; `spacingFor(name, tokens)` returns a page-unit value. `selfMessageGeometry({ x, y, side?, track? }, tokens)` returns orthogonal loop points and bounds; `trackGap` separates successive loops. `fitShapeToBounds(bounds, aspectRatio)` returns centered dimensions with the requested width/height ratio inside the supplied rectangle. These helpers expose layout choices to renderer owners; renderers remain responsible for applying them to their semantic cells.
 
-Generic validation and serialization allow a floating edge to omit a source or target only when the matching finite `geometry.sourcePoint` or `geometry.targetPoint` is provided. Any supplied endpoint ID must still resolve. The render CLI and standalone XML validator still require both endpoint IDs. Within an `mxfile`, diagram page IDs are document-wide unique; cell IDs remain local to each page.
+Generic validation, serialization, the render CLI, and standalone XML validation allow a floating edge to omit a source or target only when the matching finite `geometry.sourcePoint` or `geometry.targetPoint` is provided. Any supplied endpoint ID must still resolve. Within an `mxfile`, diagram page IDs are document-wide unique; cell IDs remain local to each page.
 
 `scripts/geometry.mjs` exports:
 

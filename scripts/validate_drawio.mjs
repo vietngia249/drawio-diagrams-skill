@@ -3,6 +3,7 @@ import { cellsFromModel, readDrawio } from './drawio_xml.mjs';
 
 const xmlDiagnostic = (severity, code, path, message, value) => ({ phase: 'xml', severity, code, path, message, ...(value === undefined ? {} : { value }) });
 const styleValue = (style, key) => style.match(new RegExp(`(?:^|;)${key}=([^;]+)`))?.[1];
+const hasExplicitFloatingPoint = (cell, end) => (cell.geometry.points ?? []).some(point => point.as === `${end}Point` && Number.isFinite(Number(point.x)) && Number.isFinite(Number(point.y)));
 const intersectsSegmentBox = (a, b, r) => a.x === b.x
   ? a.x > r.x && a.x < r.x + r.width && Math.max(Math.min(a.y, b.y), r.y) < Math.min(Math.max(a.y, b.y), r.y + r.height)
   : a.y === b.y && a.y > r.y && a.y < r.y + r.height && Math.max(Math.min(a.x, b.x), r.x) < Math.min(Math.max(a.x, b.x), r.x + r.width);
@@ -33,7 +34,7 @@ export function inspect(file, selection) {
       if (g[k] === undefined || g[k] === '' || !Number.isFinite(Number(g[k]))) errors.push({ severity: 'error', code: 'GEOMETRY_FINITE', path: `${p}.geometry.${k}`, message: 'Vertex geometry requires a finite number', value: g[k] });
     }
     if (cell.vertex) for (const k of ['width', 'height']) if (Number(g[k]) < 0) errors.push({ severity: 'error', code: 'GEOMETRY_SIZE', path: `${p}.geometry.${k}`, message: 'Size must be nonnegative', value: g[k] });
-    if (cell.edge) for (const k of ['source', 'target']) if (!a[k] || !ids.has(a[k])) errors.push({ severity: 'error', code: 'ENDPOINT_UNRESOLVED', path: `${p}.${k}`, message: `${k} ${a[k] ?? ''} does not resolve`, value: a[k] });
+    if (cell.edge) for (const k of ['source', 'target']) if ((!a[k] || !ids.has(a[k])) && !(a[k] === '' && hasExplicitFloatingPoint(cell, k))) errors.push({ severity: 'error', code: 'ENDPOINT_UNRESOLVED', path: `${p}.${k}`, message: `${k} ${a[k] ?? ''} does not resolve`, value: a[k] });
   }
   const model = graph, pageWidth = Number(model.attrs.pageWidth), pageHeight = Number(model.attrs.pageHeight), unchecked = [];
   const worldOrigin = (cell, seen = new Set()) => {
